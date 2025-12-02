@@ -52,11 +52,11 @@ class AbaqusInput(BaseModel):
     LOADING: Loading
     DISCRETIZATION: Discretization
 
-class ModelContextProtocol(BaseModel):
+class FEAJobContext(BaseModel):
     """
     The central, authoritative state object for the entire FEA job.
     """
-    mcp_id: str = Field(..., description="Unique, server-generated ID for this job.")
+    job_id: str = Field(..., description="Unique, server-generated ID for this job.")
     
     # State and Metadata
     current_status: FEAJobStatus = Field("INITIALIZED", description="The current stage of the FEA workflow.")

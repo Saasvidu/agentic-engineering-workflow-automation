@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from typing import Dict
 from datetime import datetime
 import uuid
-from mcp_schema import ModelContextProtocol, AbaqusInput, FEAJobStatus
+from mcp_schema import FEAJobContext, AbaqusInput, FEAJobStatus
 
 # 1. Initialize FastAPI Application
 app = FastAPI(
@@ -15,54 +15,54 @@ app = FastAPI(
 
 # 2. In-Memory Database (for the skeleton)
 # In a production system, this would be a persistent database (e.g., Redis, Postgres).
-# Key: mcp_id (str), Value: ModelContextProtocol object
-mcp_store: Dict[str, ModelContextProtocol] = {}
+# Key: job_id (str), Value: FEAJobContext object
+job_store: Dict[str, FEAJobContext] = {}
 
 
 # --- 3. Core MCP Endpoints (Phase 1 Deliverables) ---
 
-@app.post("/mcp/init", response_model=ModelContextProtocol, status_code=201)
+@app.post("/mcp/init", response_model=FEAJobContext, status_code=201)
 async def init_mcp(job_name: str, initial_input: AbaqusInput):
     """
     Initializes a new FEA simulation context. 
     The Orchestrator Agent calls this first, providing the user's initial config guess.
     """
-    mcp_id = str(uuid.uuid4()) # Generate a globally unique identifier (UUID)
+    job_id = str(uuid.uuid4()) # Generate a globally unique identifier (UUID)
     
-    # Create the initial MCP object using the validated Pydantic models
-    new_mcp = ModelContextProtocol(
-        mcp_id=mcp_id,
+    # Create the initial job context object using the validated Pydantic models
+    new_job = FEAJobContext(
+        job_id=job_id,
         job_name=job_name,
         input_parameters=initial_input,
         # Status defaults to "INITIALIZED"
     )
     
-    mcp_store[mcp_id] = new_mcp
-    return new_mcp
+    job_store[job_id] = new_job
+    return new_job
 
-@app.get("/mcp/{mcp_id}", response_model=ModelContextProtocol)
-async def get_mcp_state(mcp_id: str):
+@app.get("/mcp/{job_id}", response_model=FEAJobContext)
+async def get_mcp_state(job_id: str):
     """
     Retrieves the current, authoritative state of a specific FEA job.
     All agents use this to READ the context.
     """
-    if mcp_id not in mcp_store:
-        raise HTTPException(status_code=404, detail=f"MCP ID '{mcp_id}' not found.")
-    return mcp_store[mcp_id]
+    if job_id not in job_store:
+        raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
+    return job_store[job_id]
 
-@app.put("/mcp/{mcp_id}/status", response_model=ModelContextProtocol)
-async def update_mcp_status(mcp_id: str, new_status: FEAJobStatus, log_message: str):
+@app.put("/mcp/{job_id}/status", response_model=FEAJobContext)
+async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: str):
     """
     Allows an Agent to update ONLY the job status and add a log entry.
     """
-    if mcp_id not in mcp_store:
-        raise HTTPException(status_code=404, detail=f"MCP ID '{mcp_id}' not found.")
+    if job_id not in job_store:
+        raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
     
-    mcp = mcp_store[mcp_id]
+    job_context = job_store[job_id][job_id]
     
     # Update the critical fields
-    mcp.current_status = new_status
-    mcp.last_updated = datetime.utcnow()
-    mcp.logs.append(f"[{mcp.last_updated.isoformat()}] Agent Action: {log_message} (New Status: {new_status})")
+    job_context.current_status = new_status
+    job_context.last_updated = datetime.utcnow()
+    job_context.logs.append(f"[{job_context.last_updated.isoformat()}] Agent Action: {log_message} (New Status: {new_status})")
     
-    return mcp
+    return job_context
