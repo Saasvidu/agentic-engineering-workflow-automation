@@ -58,7 +58,7 @@ async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: 
     if job_id not in job_store:
         raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
     
-    job_context = job_store[job_id][job_id]
+    job_context = job_store[job_id]
     
     # Update the critical fields
     job_context.current_status = new_status
@@ -66,3 +66,15 @@ async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: 
     job_context.logs.append(f"[{job_context.last_updated.isoformat()}] Agent Action: {log_message} (New Status: {new_status})")
     
     return job_context
+
+@app.get("/mcp/queue/next", response_model=Optional[FEAJobContext])
+async def get_next_pending_job():
+    """
+    Worker Agents call this loop to find work.
+    Logic: Returns the first job found with status 'INITIALIZED'.
+    Returns null/None if queue is empty.
+    """
+    for job in job_store.values():
+        if job.current_status == "INITIALIZED":
+            return job
+    return None
