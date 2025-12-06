@@ -14,8 +14,6 @@ venv/
 env/
 ENV/
 .venv/
-v1/
-v2/
 
 # UV
 .uv/
@@ -57,3 +55,5 @@ htmlcov/
 
 # Logs
 *.log
+
+/src/jobs

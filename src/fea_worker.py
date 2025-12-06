@@ -21,6 +21,7 @@ POLL_INTERVAL_SECONDS = 5
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
 JOBS_DIR = Path(__file__).parent / "jobs"
 ABAQUS_TIMEOUT_SECONDS = 1800  # 30 minutes
+ABAQUS_CMD_PATH = os.getenv("ABAQUS_CMD_PATH")
 
 # Ensure jobs directory exists
 JOBS_DIR.mkdir(exist_ok=True)
@@ -32,6 +33,7 @@ print(f"API Base URL: {API_BASE_URL}")
 print(f"Poll Interval: {POLL_INTERVAL_SECONDS}s")
 print(f"Jobs Directory: {JOBS_DIR}")
 print(f"Simulation Runner: {SIMULATION_RUNNER_PATH}")
+print(f"Abaqus Command: {ABAQUS_CMD_PATH}")
 print("=" * 70)
 
 
@@ -115,8 +117,18 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
     """
     print(f"🚀 Starting Abaqus execution for job {job_id}...")
     
-    # Prepare command
-    cmd = ["abaqus", "cae", "-noGUI", "simulation_runner.py"]
+    abaqus_cmd = os.environ.get("ABAQUS_CMD_PATH")
+    if not abaqus_cmd:
+        print("\n--- Abaqus Run FAILED ---")
+        print("Error: 'ABAQUS_CMD_PATH' not set in your .env file.")
+        print("Please add the full path to your 'abaqus.bat' or 'abaqus.exe' file.")
+        return
+
+    # Use the full, absolute path to the Abaqus command
+    command = [abaqus_cmd, "cae", "-script", os.path.basename(SIMULATION_RUNNER_PATH)]
+
+    run_env = os.environ.copy()
+
     
     # Prepare log files
     stdout_log = job_dir / "abaqus_stdout.log"
@@ -124,13 +136,14 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
     
     try:
         with open(stdout_log, 'w') as out_f, open(stderr_log, 'w') as err_f:
-            result = subprocess.run(
-                cmd,
-                cwd=job_dir,
-                stdout=out_f,
-                stderr=err_f,
-                timeout=ABAQUS_TIMEOUT_SECONDS
-            )
+            subprocess.run(
+                command, 
+                env=run_env, 
+                cwd=job_dir, 
+                check=True, 
+                capture_output=True,
+                text=True
+        )
         
         # Check return code
         if result.returncode == 0:
@@ -185,11 +198,11 @@ def process_job(job: Dict) -> None:
             )
             print(f"✅ Job {job_id} marked as COMPLETED")
         else:
-            update_job_status(
-                job_id,
-                "FAILED",
-                f"Abaqus simulation failed. Check logs in {job_dir}"
-            )
+            # update_job_status(
+            #     job_id,
+            #     "FAILED",
+            #     f"Abaqus simulation failed. Check logs in {job_dir}"
+            # )
             print(f"❌ Job {job_id} marked as FAILED")
     
     except Exception as e:
