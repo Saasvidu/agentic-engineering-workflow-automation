@@ -125,7 +125,7 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
         return
 
     # Use the full, absolute path to the Abaqus command
-    command = [abaqus_cmd, "cae", "-noGUI", os.path.basename(SIMULATION_RUNNER_PATH)]
+    command = [abaqus_cmd, "cae", "-script", os.path.basename(SIMULATION_RUNNER_PATH)]
 
     run_env = os.environ.copy()
 
@@ -140,9 +140,10 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
                 command, 
                 env=run_env, 
                 cwd=job_dir, 
-                check=True, 
-                capture_output=True,
-                text=True
+                stdout=out_f,
+                stderr=err_f,
+                text=True,
+                timeout=ABAQUS_TIMEOUT_SECONDS
             )
         
         # Check return code
