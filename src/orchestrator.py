@@ -67,7 +67,7 @@ class AgentState(TypedDict):
 
 # Initialize Google Gemini with structured output capability
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro",
+    model="gemini-3.0-flash",
     google_api_key=GOOGLE_API_KEY,
     temperature=0.0,  # Deterministic for parsing
     convert_system_message_to_human=True
