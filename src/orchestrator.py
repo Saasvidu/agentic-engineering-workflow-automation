@@ -73,23 +73,34 @@ def parse_request(state: AgentState) -> AgentState:
     """
     print("🔍 [Node: parse_request] Extracting structured data from user input...")
     
-    system_prompt = """You are an expert structural engineering assistant specializing in Finite Element Analysis (FEA).
-Your task is to extract simulation parameters from natural language descriptions and format them into a structured JSON configuration.
+    system_prompt = """You are a specialized FEA simulation parameter extraction system.
+Your ONLY purpose is to extract and structure simulation parameters from user input.
 
-Extract the following information:
-1. MODEL_NAME: A descriptive name for the simulation
-2. TEST_TYPE: One of [CantileverBeam, TaylorImpact, TensionTest]
-3. GEOMETRY: Length, width, height in meters
-4. MATERIAL: Name, Young's modulus (Pa), Poisson's ratio
-5. LOADING: Applied forces in Newtons
-6. DISCRETIZATION: Number of mesh elements along each axis
+CRITICAL RULES:
+- You MUST ONLY respond to requests related to FEA simulations (beam tests, impact tests, tension tests)
+- If the input is unrelated to FEA simulations (greetings, general questions, off-topic requests), reject it
+- Extract ONLY these parameters in the exact structured format:
+  1. MODEL_NAME: Descriptive simulation name
+  2. TEST_TYPE: MUST be one of [CantileverBeam, TaylorImpact, TensionTest]
+  3. GEOMETRY: length_m, width_m, height_m (in meters)
+  4. MATERIAL: name, youngs_modulus_pa (Pa), poisson_ratio
+  5. LOADING: tip_load_n (Newtons)
+  6. DISCRETIZATION: elements_length, elements_width, elements_height
 
-Use reasonable engineering defaults if specific values are not provided:
-- Steel: E=200 GPa (200e9 Pa), ν=0.3
-- Aluminum: E=69 GPa (69e9 Pa), ν=0.33
+DEFAULT VALUES (use if not specified):
+- Steel: E=200e9 Pa, ν=0.3
+- Aluminum: E=69e9 Pa, ν=0.33
 - Default mesh: 10 elements per dimension
+- Default geometry: 1m x 0.1m x 0.1m
+- Default load: 1000N
 
-Be precise with units and ensure all values are physically meaningful."""
+REJECT any input that is:
+- General conversation or greetings
+- Questions about topics other than FEA
+- Requests for information or explanations
+- Any non-simulation related queries
+
+You are NOT a conversational assistant. You are a data extraction tool."""
     
     user_input = state["raw_input"]
     
@@ -222,9 +233,33 @@ def run_orchestrator(user_input: str) -> AgentState:
     return final_state
 
 if __name__ == "__main__":
-    example_input = (
-        "Create a cantilever beam simulation called 'Steel_Beam_Test_001'. "
-        "Use a steel beam that is 2 meters long, 0.1 meters wide, and 0.05 meters tall. "
-        "Apply a downward force of 5000 Newtons at the free end."
-    )
-    run_orchestrator(example_input)
+    print("=" * 80)
+    print("FEA SIMULATION ORCHESTRATOR")
+    print("=" * 80)
+    print("This system only accepts FEA simulation requests.")
+    print("Enter your simulation parameters or press Ctrl+C to exit.\n")
+    
+    while True:
+        try:
+            user_input = input("🔬 Enter simulation request: ").strip()
+            
+            if not user_input:
+                print("⚠️  Please enter a valid simulation request.\n")
+                continue
+            
+            # Run the orchestrator
+            result = run_orchestrator(user_input)
+            
+            # Print final status
+            print("\n" + "=" * 80)
+            if result.get("submission_status"):
+                print(f"📊 Final Status: {result['submission_status']}")
+            if result.get("validation_error"):
+                print(f"⚠️  Validation Error: {result['validation_error']}")
+            print("=" * 80 + "\n")
+            
+        except KeyboardInterrupt:
+            print("\n\n👋 Exiting orchestrator. Goodbye!")
+            break
+        except Exception as e:
+            print(f"\n❌ Error: {str(e)}\n")
