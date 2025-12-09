@@ -2,6 +2,6 @@ windows
 
 Venv: (src) ./.venv/Scripts/activate.ps1
 
-Server: uvicorn mcp_server:app --reload
-FEA Agent: python fea_worker.py
-Orchestrator: python orchestrator.py
+Server: (src) uvicorn mcp_server:app --reload
+FEA Agent: (src) python fea_worker.py
+Orchestrator: (src) python orchestrator.py
