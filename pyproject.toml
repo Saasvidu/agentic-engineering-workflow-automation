@@ -15,6 +15,7 @@ dependencies = [
     "langchain-google-genai",
     "langchain-core",
     "langchain-openai",
+    "streamlit>=1.50.0",
 ]
 
 [build-system]
