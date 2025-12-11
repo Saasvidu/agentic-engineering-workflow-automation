@@ -1,0 +1,23 @@
+{
+  "MODEL_NAME": "beam1",
+  "TEST_TYPE": "CantileverBeam",
+  "GEOMETRY": {
+    "length_m": 1.0,
+    "width_m": 0.1,
+    "height_m": 0.1
+  },
+  "MATERIAL": {
+    "name": "Steel",
+    "youngs_modulus_pa": 200000000000.0,
+    "poisson_ratio": 0.3
+  },
+  "LOADING": {
+    "tip_load_n": 1000.0
+  },
+  "DISCRETIZATION": {
+    "elements_length": 10,
+    "elements_width": 4,
+    "elements_height": 4
+  }
+}
+

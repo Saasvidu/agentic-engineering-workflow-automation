@@ -4,6 +4,13 @@ A chatbot interface that wraps the orchestrator backend logic.
 """
 
 import streamlit as st
+import sys
+from pathlib import Path
+
+# Add parent directories to path to import orchestrator and shared schema
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from orchestrator import run_orchestrator
 from langchain_core.messages import AIMessage
 

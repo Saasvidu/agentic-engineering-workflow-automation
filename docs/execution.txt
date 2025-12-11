@@ -1,7 +1,100 @@
-windows
+# Execution Guide - Agentic Engineering Workflow Automation
 
-Venv: (src) ./.venv/Scripts/activate.ps1
+## Docker Compose (Recommended)
 
-Server: (src) uvicorn mcp_server:app --reload
-FEA Agent: (src) python fea_worker.py
-Orchestrator: (src) python orchestrator.py
+Start all services:
+```bash
+docker-compose up --build
+```
+
+Access services:
+- Streamlit UI: http://localhost:8501
+- MCP Server API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+Stop services:
+```bash
+docker-compose down
+```
+
+## Local Development (Windows)
+
+**Prerequisites:** Install `uv` first:
+```powershell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### MCP Server
+```powershell
+cd services\mcp-server
+.\setup.ps1
+.\.venv\Scripts\Activate.ps1
+uvicorn mcp_server:app --reload
+```
+
+### Orchestrator
+```powershell
+cd services\orchestrator
+.\setup.ps1
+.\.venv\Scripts\Activate.ps1
+streamlit run streamlit_app.py
+```
+
+### FEA Worker
+```powershell
+cd services\fea-worker
+.\setup.ps1
+.\.venv\Scripts\Activate.ps1
+python fea_worker.py
+```
+
+## Local Development (Linux/Mac)
+
+**Prerequisites:** Install `uv` first:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### MCP Server
+```bash
+cd services/mcp-server
+./setup.sh
+source .venv/bin/activate
+uvicorn mcp_server:app --reload
+```
+
+### Orchestrator
+```bash
+cd services/orchestrator
+./setup.sh
+source .venv/bin/activate
+streamlit run streamlit_app.py
+```
+
+### FEA Worker
+```bash
+cd services/fea-worker
+./setup.sh
+source .venv/bin/activate
+python fea_worker.py
+```
+
+## Individual Service Docker Commands
+
+### MCP Server
+```bash
+docker build -t mcp-server -f services/mcp-server/Dockerfile .
+docker run -p 8000:8000 --env-file .env mcp-server
+```
+
+### Orchestrator
+```bash
+docker build -t orchestrator -f services/orchestrator/Dockerfile .
+docker run -p 8501:8501 --env-file .env orchestrator
+```
+
+### FEA Worker
+```bash
+docker build -t fea-worker -f services/fea-worker/Dockerfile .
+docker run --env-file .env fea-worker
+```

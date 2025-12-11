@@ -44,3 +44,4 @@ def init_db():
 if __name__ == "__main__":
     # Allow running this file directly to initialize the database
     init_db()
+

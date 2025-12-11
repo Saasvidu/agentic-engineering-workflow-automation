@@ -1,0 +1,17 @@
+[project]
+name = "fea-worker"
+version = "1.0.0"
+description = "FEA Worker Service - Background agent for executing Abaqus simulations"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

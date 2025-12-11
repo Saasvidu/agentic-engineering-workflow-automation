@@ -7,8 +7,13 @@ Refactored to use OpenAI GPT-4o-mini.
 
 import os
 import requests
+import sys
+from pathlib import Path
 from typing import TypedDict, Annotated, Optional, Sequence
 from dotenv import load_dotenv
+
+# Add parent directories to path to import shared schema
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # LangChain and LangGraph imports
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
@@ -18,7 +23,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
 # Local imports (Assumed to exist based on previous context)
-from mcp_schema import AbaqusInput
+from shared.mcp_schema import AbaqusInput
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +31,7 @@ load_dotenv()
 # Configuration
 # CHANGED: Loading OpenAI API Key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables.")
@@ -263,3 +268,4 @@ if __name__ == "__main__":
             break
         except Exception as e:
             print(f"\n❌ Error: {str(e)}\n")
+

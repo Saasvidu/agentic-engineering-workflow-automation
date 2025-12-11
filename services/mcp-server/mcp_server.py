@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
 import uuid
-from mcp_schema import FEAJobContext, AbaqusInput, FEAJobStatus
+import sys
+from pathlib import Path
+
+# Add parent directories to path to import shared schema
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from shared.mcp_schema import FEAJobContext, AbaqusInput, FEAJobStatus
 from database import get_db, init_db
 from models import FEAJob
 
@@ -129,3 +134,4 @@ async def get_next_pending_job(db: Session = Depends(get_db)):
         input_parameters=AbaqusInput(**db_job.input_parameters),
         logs=db_job.logs
     )
+

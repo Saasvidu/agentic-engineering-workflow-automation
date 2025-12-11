@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
-POLL_INTERVAL_SECONDS = 5
+API_BASE_URL = os.getenv("API_BASE_URL", "http://mcp-server:8000")
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
 JOBS_DIR = Path(__file__).parent / "jobs"
 ABAQUS_TIMEOUT_SECONDS = 1800  # 30 minutes
@@ -122,7 +122,7 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
         print("\n--- Abaqus Run FAILED ---")
         print("Error: 'ABAQUS_CMD_PATH' not set in your .env file.")
         print("Please add the full path to your 'abaqus.bat' or 'abaqus.exe' file.")
-        return
+        return False
 
     # Use the full, absolute path to the Abaqus command
     command = [abaqus_cmd, "cae", "-script", os.path.basename(SIMULATION_RUNNER_PATH)]
@@ -199,11 +199,11 @@ def process_job(job: Dict) -> None:
             )
             print(f"✅ Job {job_id} marked as COMPLETED")
         else:
-            # update_job_status(
-            #     job_id,
-            #     "FAILED",
-            #     f"Abaqus simulation failed. Check logs in {job_dir}"
-            # )
+            update_job_status(
+                job_id,
+                "FAILED",
+                f"Abaqus simulation failed. Check logs in {job_dir}"
+            )
             print(f"❌ Job {job_id} marked as FAILED")
     
     except Exception as e:
@@ -247,3 +247,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

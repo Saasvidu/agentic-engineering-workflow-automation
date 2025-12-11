@@ -1,0 +1,21 @@
+[project]
+name = "orchestrator"
+version = "1.0.0"
+description = "Orchestrator Service - AI-powered agent for parsing and submitting FEA simulation requests"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.0.1",
+    "langchain-core>=0.1.0",
+    "langchain-openai>=0.0.1",
+    "streamlit>=1.50.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "pydantic>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

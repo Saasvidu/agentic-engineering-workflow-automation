@@ -13,3 +13,4 @@ if __name__ == "__main__":
     init_db()
     print("\n✓ Database schema has been pushed successfully!")
     print("=" * 50)
+
