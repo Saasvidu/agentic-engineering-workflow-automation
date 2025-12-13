@@ -28,3 +28,4 @@ echo ""
 echo "To run the server:"
 echo "  uvicorn mcp_server:app --reload"
 
+

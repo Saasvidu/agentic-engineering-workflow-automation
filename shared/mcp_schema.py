@@ -67,3 +67,4 @@ class FEAJobContext(BaseModel):
     input_parameters: AbaqusInput
     logs: list[str] = Field(default_factory=list, description="Historical log of agent actions and status updates.")
 
+

@@ -22,3 +22,4 @@ EXPOSE 8501
 # Run Streamlit app using the virtual environment
 CMD [".venv/bin/streamlit", "run", "streamlit_app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
 
+

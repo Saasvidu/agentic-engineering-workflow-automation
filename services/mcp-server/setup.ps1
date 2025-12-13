@@ -25,3 +25,4 @@ Write-Host ""
 Write-Host "To run the server:"
 Write-Host "  uvicorn mcp_server:app --reload"
 
+

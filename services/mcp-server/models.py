@@ -29,3 +29,4 @@ class FEAJob(Base):
     def __repr__(self):
         return f"<FEAJob(job_id={self.job_id}, job_name={self.job_name}, status={self.current_status})>"
 
+

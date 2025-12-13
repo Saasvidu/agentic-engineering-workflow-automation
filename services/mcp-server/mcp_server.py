@@ -135,3 +135,4 @@ async def get_next_pending_job(db: Session = Depends(get_db)):
         logs=db_job.logs
     )
 
+

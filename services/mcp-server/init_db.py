@@ -14,3 +14,4 @@ if __name__ == "__main__":
     print("\n✓ Database schema has been pushed successfully!")
     print("=" * 50)
 
+
