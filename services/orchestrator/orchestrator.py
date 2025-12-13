@@ -1,10 +1,3 @@
-"""
-orchestrator.py
-
-Agentic AI Orchestrator for Structural Engineering FEA Simulations.
-Refactored to use OpenAI GPT-4o-mini.
-"""
-
 import os
 import requests
 import sys
@@ -15,31 +8,97 @@ from dotenv import load_dotenv
 # Add parent directories to path to import shared schema
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# LangChain and LangGraph imports
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-# CHANGED: Import OpenAI chat model
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-
-# Local imports (Assumed to exist based on previous context)
 from shared.mcp_schema import AbaqusInput
 
-# Load environment variables
-load_dotenv()
+# Load environment variables - try .env file first (for local dev), 
+# but also check if already set (for Docker with --env-file)
+# Docker sets env vars directly, so load_dotenv() may not find a file, but os.getenv() will work
+load_dotenv(override=False)  # Don't override existing env vars (set by Docker)
 
 # Configuration
-# CHANGED: Loading OpenAI API Key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
+
+# Determine MCP_SERVER_URL based on environment
+# If running in Docker and MCP server is on host: use host.docker.internal (Mac/Windows)
+# If running in Docker and MCP server is also in Docker: use service name (e.g., mcp-server)
+# If running locally: use localhost
+default_mcp_url = "http://mcp-server:8000"  # Default for Docker-to-Docker
+if os.getenv("DOCKER_ENV"):
+    # Check if we should use host.docker.internal (when MCP server is on host machine)
+    if os.getenv("MCP_ON_HOST", "false").lower() == "true":
+        default_mcp_url = "http://host.docker.internal:8000"
+
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", default_mcp_url)
+
+# Sanitize MCP_SERVER_URL (remove quotes, whitespace, etc.)
+if MCP_SERVER_URL:
+    original_url = MCP_SERVER_URL
+    MCP_SERVER_URL = MCP_SERVER_URL.strip().strip('"').strip("'").strip('`')
+    MCP_SERVER_URL = MCP_SERVER_URL.replace('\n', '').replace('\r', '').replace('\t', '')
+    # Remove trailing slash if present
+    MCP_SERVER_URL = MCP_SERVER_URL.rstrip('/')
+    # Debug output
+    if original_url != MCP_SERVER_URL:
+        print(f"🔧 MCP_SERVER_URL sanitized: '{original_url}' -> '{MCP_SERVER_URL}'")
+    else:
+        print(f"✅ MCP_SERVER_URL: {MCP_SERVER_URL}")
+
+# Sanitize API key - remove whitespace, newlines, quotes, and other unwanted characters
+if OPENAI_API_KEY:
+    original_key = OPENAI_API_KEY
+    original_length = len(OPENAI_API_KEY)
+    
+    # Remove leading/trailing whitespace
+    OPENAI_API_KEY = OPENAI_API_KEY.strip()
+    # Remove quotes if present (single or double, at start or end)
+    OPENAI_API_KEY = OPENAI_API_KEY.strip('"').strip("'").strip('`')
+    # Remove any newlines, carriage returns, or other control characters
+    OPENAI_API_KEY = OPENAI_API_KEY.replace('\n', '').replace('\r', '').replace('\t', '')
+    # Remove any other whitespace characters (spaces, etc.)
+    OPENAI_API_KEY = ''.join(OPENAI_API_KEY.split())
+    # Remove any non-printable characters
+    OPENAI_API_KEY = ''.join(char for char in OPENAI_API_KEY if char.isprintable())
+    
+    # Check for non-ASCII characters (OpenAI keys should be ASCII)
+    non_ascii_chars = [c for c in OPENAI_API_KEY if ord(c) > 127]
+    if non_ascii_chars:
+        print(f"   ⚠️  Warning: Found {len(non_ascii_chars)} non-ASCII characters in key")
+        # Remove non-ASCII characters
+        OPENAI_API_KEY = ''.join(char for char in OPENAI_API_KEY if ord(char) <= 127)
+    
+    # Debug: Check if API key is loaded (but don't print the actual key)
+    print(f"✅ OPENAI_API_KEY loaded")
+    print(f"   Original length: {original_length}, Sanitized length: {len(OPENAI_API_KEY)}")
+    print(f"   Starts with: {OPENAI_API_KEY[:10]}...")
+    print(f"   Format check: starts with 'sk-' = {OPENAI_API_KEY.startswith('sk-')}")
+    print(f"   Contains only ASCII: {all(ord(c) <= 127 for c in OPENAI_API_KEY)}")
+    
+    # Check if sanitization changed the key significantly
+    if original_length != len(OPENAI_API_KEY):
+        print(f"   ⚠️  Key was sanitized (removed {original_length - len(OPENAI_API_KEY)} characters)")
+    
+    # Validate format
+    if not OPENAI_API_KEY.startswith("sk-"):
+        # Show more details for debugging
+        print(f"   ❌ Invalid key format detected!")
+        print(f"   First 20 chars (repr): {repr(OPENAI_API_KEY[:20])}")
+        print(f"   First 20 chars (raw): {OPENAI_API_KEY[:20]}")
+        raise ValueError(
+            f"Invalid API key format. OpenAI API keys should start with 'sk-'. "
+            f"Got: {OPENAI_API_KEY[:15]}... (length: {len(OPENAI_API_KEY)}). "
+            f"Please check your .env file for extra characters, quotes, or formatting issues."
+        )
+else:
+    print("❌ OPENAI_API_KEY not found")
+    print(f"   Current working directory: {os.getcwd()}")
+    print(f"   Environment variables containing 'OPENAI': {[k for k in os.environ.keys() if 'OPENAI' in k.upper()]}")
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables.")
-
-
-# ============================================================================
-# STATE DEFINITION
-# ============================================================================
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -48,27 +107,20 @@ class AgentState(TypedDict):
     validation_error: Optional[str]
     submission_status: Optional[str]
 
+# Ensure API key is a proper string (not bytes or other type)
+if not isinstance(OPENAI_API_KEY, str):
+    OPENAI_API_KEY = str(OPENAI_API_KEY)
 
-# ============================================================================
-# LLM INITIALIZATION
-# ============================================================================
+# Final validation before creating LLM
+if len(OPENAI_API_KEY) < 20:  # OpenAI keys are typically 51+ characters
+    raise ValueError(f"API key seems too short (length: {len(OPENAI_API_KEY)}). Please verify your key.")
 
-# CHANGED: Initialize OpenAI GPT-4o-mini
-# This model is optimized for speed and structured data extraction
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     api_key=OPENAI_API_KEY,
     temperature=0.0  # Deterministic for parsing
 )
-
-# Bind the LLM to output structured AbaqusInput objects
-# OpenAI supports this natively and reliably
 structured_llm = llm.with_structured_output(AbaqusInput)
-
-
-# ============================================================================
-# GRAPH NODE FUNCTIONS
-# ============================================================================
 
 def parse_request(state: AgentState) -> AgentState:
     """
@@ -134,32 +186,49 @@ You are NOT a conversational assistant. You are a data extraction tool."""
     
     return state
 
-# ... [The rest of the file (validate_physics, submit_job, graph definition) remains unchanged] ...
-
 def validate_physics(state: AgentState) -> AgentState:
-    # (Existing validation logic...)
+    """
+    Node 2: Validate Physics
+    Performs engineering validation on the parsed AbaqusInput configuration.
+    Ensures the parameters are physically realistic and compliant with FEA best practices.
+    Returns the state with validation errors if any.
+    """
     print("🔬 [Node: validate_physics] Performing engineering validation...")
     structured_config = state.get("structured_config")
     
     if not structured_config:
         state["validation_error"] = "No structured configuration to validate"
         return state
-        
-    # [Insert your existing physics validation logic here]
-    # For brevity, I am returning the state as-is, but you should 
-    # keep your original aspect ratio and modulus checks.
-    
-    state["validation_error"] = None # Assume pass for this snippet
+
+    # Check aspect ratio
+    if structured_config.GEOMETRY.length_m / structured_config.GEOMETRY.width_m < 10:
+        state["validation_error"] = "Aspect ratio is too large. Should be at least 10:1."
+        return state
+
+    # Check material properties
+    if structured_config.MATERIAL.youngs_modulus_pa < 1e9:
+        state["validation_error"] = "Young's modulus is too low. Should be at least 1 GPa."
+        return state
+
+    # Check discretization
+    if structured_config.DISCRETIZATION.elements_length < 10:
+        state["validation_error"] = "Discretization is too coarse. Should be at least 10 elements."
+        return state
+
+    # Check loading
+    if structured_config.LOADING.tip_load_n < 1000:
+        state["validation_error"] = "Loading is too low. Should be at least 1000 N."
+        return state
+
+    # Check if all checks passed
+    state["validation_error"] = None
     return state
 
 def submit_job(state: AgentState) -> AgentState:
-    """
-    Node 3: Submit Job
-    
+    """Node 3: Submit Job
     Sends the validated AbaqusInput configuration to the MCP Server via POST request.
     The server will initialize a new FEA job and return a job context.
-    
-    Transition: Always proceeds to END (workflow complete)
+    Returns the state with submission errors if any.
     """
     print("🚀 [Node: submit_job] Submitting job to MCP Server...")
     
@@ -169,6 +238,10 @@ def submit_job(state: AgentState) -> AgentState:
     endpoint = f"{MCP_SERVER_URL}/mcp/init"
     params = {"job_name": structured_config.MODEL_NAME}
     payload = structured_config.model_dump()
+    
+    # Debug: Show the endpoint being used
+    print(f"   📡 Endpoint: {endpoint}")
+    print(f"   📡 MCP_SERVER_URL value: {repr(MCP_SERVER_URL)}")
     
     try:
         # Make POST request to MCP Server with job_name as query param and config as JSON body

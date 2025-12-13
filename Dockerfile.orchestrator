@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Copy shared schema (from project root)
+COPY shared /app/shared
+
+# Copy service files
+COPY services/orchestrator /app
+
+# Create virtual environment and sync dependencies from pyproject.toml
+RUN uv sync
+
+# Expose Streamlit port
+EXPOSE 8501
+
+# Set environment variable to indicate we're in Docker
+ENV DOCKER_ENV=true
+
+# Run Streamlit app using the virtual environment
+# Note: Environment variables should be passed via --env-file .env when running
+CMD [".venv/bin/streamlit", "run", "streamlit_app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]

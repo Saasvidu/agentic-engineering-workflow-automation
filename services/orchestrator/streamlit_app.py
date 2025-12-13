@@ -3,9 +3,15 @@ Streamlit UI for FEA Simulation Orchestrator
 A chatbot interface that wraps the orchestrator backend logic.
 """
 
+import os
 import streamlit as st
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables early (before importing orchestrator)
+# This ensures env vars are available when orchestrator module loads
+load_dotenv(override=False)  # Don't override if already set (Docker sets them directly)
 
 # Add parent directories to path to import orchestrator and shared schema
 sys.path.insert(0, str(Path(__file__).parent))
