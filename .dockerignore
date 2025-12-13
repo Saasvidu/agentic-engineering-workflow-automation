@@ -1,0 +1,53 @@
+# Environment files
+.env
+.env.local
+.env.example
+
+# Python cache (anywhere in project)
+**/__pycache__/
+**/*.py[cod]
+**/*.pyc
+**/*$py.class
+**/*.so
+
+# Virtual environments (anywhere in project)
+**/venv/
+**/venv
+**/VNV/
+**/VNV
+**/env/
+**/env
+**/ENV/
+**/ENV
+**/.venv/
+**/.venv
+**/.uv/
+
+# IDE files
+.vscode/
+.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+**/*.egg-info/
+
+# Runtime directories (created at runtime)
+**/jobs/
+
+# Logs
+**/*.log
+
+# Git files
+.git/
+.gitignore
+
+# Documentation (if not needed in container)
+docs/
