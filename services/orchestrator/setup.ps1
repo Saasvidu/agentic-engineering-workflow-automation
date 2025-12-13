@@ -8,14 +8,9 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Create virtual environment
-Write-Host "Creating virtual environment..." -ForegroundColor Yellow
-uv venv
-
-# Activate virtual environment and install dependencies
-Write-Host "Installing dependencies..." -ForegroundColor Yellow
-& .\.venv\Scripts\Activate.ps1
-uv pip install -r requirements.txt
+# Create virtual environment and sync dependencies from pyproject.toml
+Write-Host "Creating virtual environment and installing dependencies..." -ForegroundColor Yellow
+uv sync
 
 Write-Host "✅ Orchestrator setup complete!" -ForegroundColor Green
 Write-Host ""

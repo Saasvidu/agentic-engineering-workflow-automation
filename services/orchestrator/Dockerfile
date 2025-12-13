@@ -11,10 +11,8 @@ COPY shared /app/shared
 # Copy service files
 COPY services/orchestrator /app
 
-# Create virtual environment and install dependencies with uv
-RUN uv venv .venv && \
-    . .venv/bin/activate && \
-    uv pip install -r requirements.txt
+# Create virtual environment and sync dependencies from pyproject.toml
+RUN uv sync
 
 # Expose port
 EXPOSE 8501

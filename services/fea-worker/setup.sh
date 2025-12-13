@@ -11,14 +11,9 @@ if ! command -v uv &> /dev/null; then
     exit 1
 fi
 
-# Create virtual environment
-echo "Creating virtual environment..."
-uv venv
-
-# Activate virtual environment and install dependencies
-echo "Installing dependencies..."
-source .venv/bin/activate
-uv pip install -r requirements.txt
+# Create virtual environment and sync dependencies from pyproject.toml
+echo "Creating virtual environment and installing dependencies..."
+uv sync
 
 echo "✅ FEA Worker setup complete!"
 echo ""
