@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "http://mcp-server:8000")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
 JOBS_DIR = Path(__file__).parent / "jobs"
@@ -29,7 +29,7 @@ JOBS_DIR.mkdir(exist_ok=True)
 print("=" * 70)
 print("FEA WORKER AGENT")
 print("=" * 70)
-print(f"API Base URL: {API_BASE_URL}")
+print(f"API Base URL: {MCP_SERVER_URL}")
 print(f"Poll Interval: {POLL_INTERVAL_SECONDS}s")
 print(f"Jobs Directory: {JOBS_DIR}")
 print(f"Simulation Runner: {SIMULATION_RUNNER_PATH}")
@@ -46,7 +46,7 @@ def get_next_job() -> Optional[Dict]:
     """
     try:
         response = requests.get(
-            f"{API_BASE_URL}/mcp/queue/next",
+            f"{MCP_SERVER_URL}/mcp/queue/next",
             timeout=10
         )
         
@@ -70,7 +70,7 @@ def update_job_status(job_id: str, new_status: str, log_message: str) -> bool:
     """
     try:
         response = requests.put(
-            f"{API_BASE_URL}/mcp/{job_id}/status",
+            f"{MCP_SERVER_URL}/mcp/{job_id}/status",
             params={
                 "new_status": new_status,
                 "log_message": log_message
