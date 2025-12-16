@@ -39,6 +39,10 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set. Please configure it in your .env file.")
 
+# Sanitize the URL: remove quotes, whitespace, etc. (common in .env files)
+DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'").strip('`')
+DATABASE_URL = DATABASE_URL.replace('\n', '').replace('\r', '').replace('\t', '')
+
 # Sanitize the URL to remove duplicate query parameters
 DATABASE_URL = sanitize_database_url(DATABASE_URL)
 
