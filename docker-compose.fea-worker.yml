@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  abaqus-engine:
+    image: abaqusregistry.azurecr.io/abaqus_2024_le:v1
+    container_name: abaqus_engine
+    platform: linux/amd64  # <--- Add this line
+    # Essential for Wine/GUI rendering to prevent crashes
+    shm_size: '2gb'
+    ports:
+      - "6901:6901" # Kasm/VNC Web Port
+    environment:
+      - VNC_PW=password
+      - VNC_RESOLUTION=1280x720
+    volumes:
+      - ./shared_data:/home/kasm_user/work
+    restart: unless-stopped
