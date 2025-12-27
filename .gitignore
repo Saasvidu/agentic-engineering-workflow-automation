@@ -56,3 +56,5 @@ htmlcov/
 *.log
 
 /src/jobs
+
+/shared_data/

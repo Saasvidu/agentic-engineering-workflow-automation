@@ -111,60 +111,43 @@ def prepare_job_directory(job_id: str, input_parameters: Dict) -> Path:
 
 
 def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
-    """
-    Execute the Abaqus simulation in the job directory.
-    Returns True if successful, False if failed.
-    """
-    print(f"🚀 Starting Abaqus execution for job {job_id}...")
+    print(f"🚀 Dispatching Abaqus job {job_id} to Engine container...")
     
-    abaqus_cmd = os.environ.get("ABAQUS_CMD_PATH")
-    if not abaqus_cmd:
-        print("\n--- Abaqus Run FAILED ---")
-        print("Error: 'ABAQUS_CMD_PATH' not set in your .env file.")
-        print("Please add the full path to your 'abaqus.bat' or 'abaqus.exe' file.")
-        return False
+    # We map the path from the Worker's perspective to the Engine's perspective
+    # Worker Path: /app/jobs/JOB_ID
+    # Engine Path: /home/kasm_user/work/JOB_ID
+    engine_work_dir = f"/home/kasm_user/work/{job_id}"
 
-    # Use the full, absolute path to the Abaqus command
-    command = [abaqus_cmd, "cae", "-script", os.path.basename(SIMULATION_RUNNER_PATH)]
-
-    run_env = os.environ.copy()
-
+    # We use /bin/bash -c to allow environment variables to be set before the wine call
+    # Note: we escape the quotes carefully
+    full_command = f"WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -script simulation_runner.py"
     
-    # Prepare log files
-    stdout_log = job_dir / "abaqus_stdout.log"
-    stderr_log = job_dir / "abaqus_stderr.log"
+    # The Command: We tell the Engine to run wine + abaqus
+    # Note: Using -noGUI is key here for stability
+    docker_cmd = [
+        "docker", "exec", 
+        "-w", engine_work_dir, 
+        "abaqus_engine", 
+        "/bin/bash", "-c", full_command
+    ]
     
     try:
-        with open(stdout_log, 'w') as out_f, open(stderr_log, 'w') as err_f:
-            result = subprocess.run(
-                command, 
-                env=run_env, 
-                cwd=job_dir, 
-                stdout=out_f,
-                stderr=err_f,
-                text=True,
-                timeout=ABAQUS_TIMEOUT_SECONDS
-            )
+        result = subprocess.run(
+            docker_cmd,
+            capture_output=True,
+            text=True,
+            timeout=ABAQUS_TIMEOUT_SECONDS
+        )
         
-        # Check return code
         if result.returncode == 0:
-            print(f"✅ Abaqus simulation completed successfully")
+            print(f"✅ Engine completed job {job_id}")
             return True
         else:
-            print(f"❌ Abaqus simulation failed with return code {result.returncode}")
-            print(f"   Check logs: {stderr_log}")
+            print(f"❌ Engine failed: {result.stderr}")
             return False
-            
-    except subprocess.TimeoutExpired:
-        print(f"⏱️  Abaqus simulation timed out after {ABAQUS_TIMEOUT_SECONDS}s")
-        return False
-    except FileNotFoundError:
-        print(f"❌ Abaqus executable not found. Is Abaqus installed and in PATH?")
-        return False
     except Exception as e:
-        print(f"❌ Unexpected error during Abaqus execution: {e}")
+        print(f"❌ Bridge Error: {e}")
         return False
-
 
 def process_job(job: Dict) -> None:
     """

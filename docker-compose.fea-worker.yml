@@ -4,14 +4,30 @@ services:
   abaqus-engine:
     image: abaqusregistry.azurecr.io/abaqus_2024_le:v1
     container_name: abaqus_engine
-    platform: linux/amd64  # <--- Add this line
-    # Essential for Wine/GUI rendering to prevent crashes
+    platform: linux/amd64
     shm_size: '2gb'
     ports:
-      - "6901:6901" # Kasm/VNC Web Port
+      - "6901:6901"
     environment:
       - VNC_PW=password
-      - VNC_RESOLUTION=1280x720
     volumes:
       - ./shared_data:/home/kasm_user/work
     restart: unless-stopped
+
+  fea-worker:
+    build:
+      dockerfile: Dockerfile.fea-worker
+    container_name: fea_worker
+    depends_on:
+      - abaqus-engine
+    volumes:
+      - ./shared_data:/app/jobs
+      - /var/run/docker.sock:/var/run/docker.sock # The Bridge
+    tty: true
+    stdin_open: true
+    environment:
+      - DOCKER_ENV=true
+      - MCP_SERVER_URL=https://mcp-server.yellowtree-5333905a.australiaeast.azurecontainerapps.io
+      - ABAQUS_CMD_PATH=abaqus
+      - ENGINE_CONTAINER_NAME=abaqus_engine
+    restart: on-failure

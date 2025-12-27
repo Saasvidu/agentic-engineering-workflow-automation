@@ -18,7 +18,20 @@ def run_cantilever_beam(config):
     """
     
     # --- 2.1. Extract Parameters from Config ---
-    MODEL_NAME = config['MODEL_NAME']
+    # MODEL_NAME = config['MODEL_NAME']
+    # --- DEBUG: See what is actually coming in ---
+    raw_name = config.get('MODEL_NAME', 'Not_Found')
+    print("DEBUG: Raw MODEL_NAME from config: " + str(raw_name))
+
+    # --- FIX: Force it to be Abaqus-compliant ---
+    # We add 'Job_' prefix (starts with a letter)
+    # and replace '-' with '_' (Abaqus hates hyphens)
+    MODEL_NAME = "Job_" + str(raw_name).replace("-", "_")
+    
+    # Abaqus has a 38-character limit for names
+    MODEL_NAME = MODEL_NAME[:35] 
+    
+    print("DEBUG: Sanitized MODEL_NAME for Abaqus: " + MODEL_NAME)
     
     # Geometry
     geom = config['GEOMETRY']

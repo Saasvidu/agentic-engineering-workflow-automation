@@ -52,3 +52,4 @@ dist/
 # Documentation (if not needed in container)
 docs/
 
+.shared_data/
