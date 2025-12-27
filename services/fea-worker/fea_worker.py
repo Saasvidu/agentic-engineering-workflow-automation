@@ -120,7 +120,7 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
 
     # We use /bin/bash -c to allow environment variables to be set before the wine call
     # Note: we escape the quotes carefully
-    full_command = f"WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -script simulation_runner.py"
+    full_command = f"WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI simulation_runner.py"
     
     # The Command: We tell the Engine to run wine + abaqus
     # Note: Using -noGUI is key here for stability

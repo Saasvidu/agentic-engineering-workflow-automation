@@ -158,8 +158,8 @@ def run_cantilever_beam(config):
     job = mdb.Job(name=MODEL_NAME, model=MODEL_NAME, type=ANALYSIS)
     
     # NOTE: To run in non-GUI mode, uncomment these lines:
-    # job.submit(consistencyChecking=OFF)
-    # job.waitForCompletion() 
+    job.submit(consistencyChecking=OFF)
+    job.waitForCompletion() 
 
     print(f"Abaqus model '{MODEL_NAME}' created and meshed successfully.")
     print(f"Run the script in Abaqus/CAE using File > Run Script to execute.")
