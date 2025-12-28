@@ -16,7 +16,7 @@ FEAJobStatus = Literal[
 
 # Define acceptable test types, aligning with your 'simulation_runner.py' logic
 FEATestType = Literal["CantileverBeam", "TaylorImpact", "TensionTest"]
-
+w
 class Geometry(BaseModel):
     """Defines the dimensions of the structural part."""
     length_m: float = Field(..., gt=0, description="Length in meters.")

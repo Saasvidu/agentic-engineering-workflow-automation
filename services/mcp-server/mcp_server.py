@@ -22,13 +22,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize database on startup
+# 2. Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
     init_db()
 
 
-# --- 3. Core MCP Endpoints (Phase 1 Deliverables) ---
+# 3. Core MCP Endpoints
 
 @app.post("/mcp/init", response_model=FEAJobContext, status_code=201)
 async def init_mcp(job_name: str, initial_input: AbaqusInput, db: Session = Depends(get_db)):
