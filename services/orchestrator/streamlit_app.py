@@ -14,9 +14,13 @@ from dotenv import load_dotenv
 load_dotenv(override=False)  # Don't override if already set (Docker sets them directly)
 
 # Add parent directories to path to import orchestrator and shared schema
-sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# When running in Docker: /app/orchestrator/streamlit_app.py -> need /app/ in path
+# When running locally: services/orchestrator/streamlit_app.py -> need parent in path
+app_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(app_dir))
+sys.path.insert(0, str(app_dir.parent.parent))  # For shared schema
 
+# Import from package
 from orchestrator import run_orchestrator
 from langchain_core.messages import AIMessage
 
