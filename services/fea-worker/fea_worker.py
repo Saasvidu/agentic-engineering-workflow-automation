@@ -176,10 +176,22 @@ def upload_job_artifacts_to_azure(job_id: str, local_dir: Path, inputs: Dict, is
                 blob_client.upload_blob(data, overwrite=True)
 
     # 2. Create the 'Light' Summary File
+    physics_metrics = {}
+    results_path = local_dir / "results.json"
+    
+    if results_path.exists():
+        try:
+            with open(results_path, 'r') as f:
+                physics_metrics = json.load(f)
+        except Exception as e:
+            print(f"⚠️ Could not parse results.json: {e}")
+
+    # 2. Updated Summary File with Physics Details
     summary = {
         "job_id": job_id,
         "completion_time": datetime.now().isoformat(),
         "status": "FAILED" if is_failed else "SUCCESS",
+        "physics_results": physics_metrics,  # <--- HERE IS YOUR DATA!
         "input_summary": {
             "test_type": inputs.get("TEST_TYPE"),
             "material": inputs.get("MATERIAL", {}).get("name")

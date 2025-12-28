@@ -6,6 +6,7 @@
 from abaqus import *
 from abaqusConstants import *
 import json  # Standard Python module for reading JSON
+import visualization
 
 # -----------------------------------------------------
 # --- 2. Define Test-Specific Functions ---
@@ -160,9 +161,43 @@ def run_cantilever_beam(config):
     # NOTE: To run in non-GUI mode, uncomment these lines:
     job.submit(consistencyChecking=OFF)
     job.waitForCompletion() 
+    extract_results(MODEL_NAME)
 
     print(f"Abaqus model '{MODEL_NAME}' created and meshed successfully.")
     print(f"Run the script in Abaqus/CAE using File > Run Script to execute.")
+
+def extract_results(model_name):
+    """
+    Opens the ODB and extracts max displacement.
+    """
+    from odbAccess import openOdb
+    odb_path = model_name + '.odb'
+    odb = openOdb(path=odb_path)
+    
+    max_disp = 0.0
+    # Loop through the last frame of the last step
+    last_step = odb.steps.values()[-1]
+    last_frame = last_step.frames[-1]
+    
+    # Get displacement field (U)
+    displacement_field = last_frame.fieldOutputs['U']
+    
+    for value in displacement_field.values:
+        magnitude = value.magnitude
+        if magnitude > max_disp:
+            max_disp = magnitude
+            
+    odb.close()
+    
+    # Write to a tiny results.json for the Worker to read
+    results = {
+        "max_displacement": max_disp,
+        "units": "m"
+    }
+    with open('results.json', 'w') as f:
+        json.dump(results, f)
+    
+    print("DEBUG: Physics results extracted to results.json")
 
 
 # -----------------------------------------------------
