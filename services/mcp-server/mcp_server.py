@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.mcp_schema import FEAJobContext, AbaqusInput, FEAJobStatus
 from database import get_db, init_db
 from models import FEAJob
+from conversions import pydantic_to_db, db_to_pydantic
 
 # 1. Initialize FastAPI Application
 app = FastAPI(
@@ -37,7 +38,7 @@ async def init_mcp(job_name: str, initial_input: AbaqusInput, db: Session = Depe
     """
     job_id = str(uuid.uuid4()) # Generate a globally unique identifier (UUID)
     
-    # Create the initial job context object using the validated Pydantic models
+    # Create the Pydantic model (single source of truth)
     new_job = FEAJobContext(
         job_id=job_id,
         job_name=job_name,
@@ -45,20 +46,14 @@ async def init_mcp(job_name: str, initial_input: AbaqusInput, db: Session = Depe
         # Status defaults to "INITIALIZED"
     )
     
-    # Store in database
-    db_job = FEAJob(
-        job_id=new_job.job_id,
-        job_name=new_job.job_name,
-        current_status=new_job.current_status,
-        last_updated=new_job.last_updated,
-        input_parameters=new_job.input_parameters.model_dump(),
-        logs=new_job.logs
-    )
+    # Convert to SQLAlchemy model and store in database
+    db_job = pydantic_to_db(new_job)
     db.add(db_job)
     db.commit()
     db.refresh(db_job)
     
-    return new_job
+    # Convert back to Pydantic for response
+    return db_to_pydantic(db_job)
 
 @app.get("/mcp/{job_id}", response_model=FEAJobContext)
 async def get_mcp_state(job_id: str, db: Session = Depends(get_db)):
@@ -71,15 +66,8 @@ async def get_mcp_state(job_id: str, db: Session = Depends(get_db)):
     if not db_job:
         raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
     
-    # Convert database model to Pydantic model
-    return FEAJobContext(
-        job_id=db_job.job_id,
-        job_name=db_job.job_name,
-        current_status=db_job.current_status,
-        last_updated=db_job.last_updated,
-        input_parameters=AbaqusInput(**db_job.input_parameters),
-        logs=db_job.logs
-    )
+    # Convert SQLAlchemy model to Pydantic model
+    return db_to_pydantic(db_job)
 
 @app.put("/mcp/{job_id}/status", response_model=FEAJobContext)
 async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: str, db: Session = Depends(get_db)):
@@ -91,7 +79,7 @@ async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: 
     if not db_job:
         raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
     
-    # Update the critical fields
+    # Update the critical fields on the SQLAlchemy model
     db_job.current_status = new_status
     db_job.last_updated = datetime.utcnow()
     
@@ -103,15 +91,8 @@ async def update_mcp_status(job_id: str, new_status: FEAJobStatus, log_message: 
     db.commit()
     db.refresh(db_job)
     
-    # Return as Pydantic model
-    return FEAJobContext(
-        job_id=db_job.job_id,
-        job_name=db_job.job_name,
-        current_status=db_job.current_status,
-        last_updated=db_job.last_updated,
-        input_parameters=AbaqusInput(**db_job.input_parameters),
-        logs=db_job.logs
-    )
+    # Convert to Pydantic model for response
+    return db_to_pydantic(db_job)
 
 @app.get("/mcp/queue/next", response_model=Optional[FEAJobContext])
 async def get_next_pending_job(db: Session = Depends(get_db)):
@@ -126,13 +107,6 @@ async def get_next_pending_job(db: Session = Depends(get_db)):
         return None
     
     # Convert to Pydantic model
-    return FEAJobContext(
-        job_id=db_job.job_id,
-        job_name=db_job.job_name,
-        current_status=db_job.current_status,
-        last_updated=db_job.last_updated,
-        input_parameters=AbaqusInput(**db_job.input_parameters),
-        logs=db_job.logs
-    )
+    return db_to_pydantic(db_job)
 
 

@@ -1,7 +1,7 @@
 # mcp_schema.py
 
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Literal
 from datetime import datetime
 
 # Define acceptable states for the FEA job (The "Status" field)
@@ -55,11 +55,12 @@ class AbaqusInput(BaseModel):
 class FEAJobContext(BaseModel):
     """
     The central, authoritative state object for the entire FEA job.
+    Pure Pydantic model - the single source of truth for the job structure.
     """
     job_id: str = Field(..., description="Unique, server-generated ID for this job.")
     
     # State and Metadata
-    current_status: FEAJobStatus = Field("INITIALIZED", description="The current stage of the FEA workflow.")
+    current_status: FEAJobStatus = Field(default="INITIALIZED", description="The current stage of the FEA workflow.")
     job_name: str = Field(..., description="User-provided human-readable job identifier.")
     last_updated: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of the last modification.")
     

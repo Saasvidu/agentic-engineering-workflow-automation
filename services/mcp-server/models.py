@@ -1,6 +1,6 @@
 # models.py
 
-from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -11,6 +11,10 @@ class FEAJob(Base):
     """
     SQLAlchemy model for storing FEA job contexts.
     Uses JSONB for flexible storage of input parameters and logs.
+    
+    This model mirrors the structure of FEAJobContext from shared.mcp_schema,
+    but is optimized for database storage. Use conversion utilities to convert
+    between FEAJob (SQLAlchemy) and FEAJobContext (Pydantic).
     """
     __tablename__ = "fea_jobs"
     
