@@ -27,7 +27,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock # The Bridge
     tty: true
     stdin_open: true
-    environment:
-      - DOCKER_ENV=true
-      - ENGINE_CONTAINER_NAME=abaqus_engine
     restart: on-failure

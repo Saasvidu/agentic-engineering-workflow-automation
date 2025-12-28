@@ -19,10 +19,7 @@ RUN uv sync
 # Create jobs directory for runtime job storage
 RUN mkdir -p /app/jobs
 
-# Note: ABAQUS_CMD_PATH environment variable must be set at runtime
-# Abaqus is typically installed on the host and accessed via volume mount
-# or the path should point to an Abaqus installation accessible from the container
-
 # Run the worker using the virtual environment
+# All configuration is done via environment variables in .env file
 # Use uv to run the script, ensuring the virtualenv is active
 CMD ["/app/.venv/bin/python", "fea_worker.py"]
