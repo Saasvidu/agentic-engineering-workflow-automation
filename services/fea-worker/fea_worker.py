@@ -11,6 +11,7 @@ from typing import Optional, Dict
 from datetime import datetime
 import requests
 from dotenv import load_dotenv
+from azure.storage.blob import BlobServiceClient
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +23,8 @@ SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
 JOBS_DIR = Path(__file__).parent / "jobs"
 ABAQUS_TIMEOUT_SECONDS = 1800  # 30 minutes
 ABAQUS_CMD_PATH = os.getenv("ABAQUS_CMD_PATH")
+AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "fea-job-data")
 
 # Ensure jobs directory exists
 JOBS_DIR.mkdir(exist_ok=True)
@@ -149,53 +152,103 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
         print(f"❌ Bridge Error: {e}")
         return False
 
+def upload_job_artifacts_to_azure(job_id: str, local_dir: Path, inputs: Dict, is_failed: bool = False) -> str:
+    """
+    Handles the recursive upload to Azure Blob Storage.
+    """
+    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "fea-job-data")
+    
+    if not conn_str:
+        print("⚠️ No Azure connection string found. Artifacts lost!")
+        return "LOCAL_ONLY"
+
+    service_client = BlobServiceClient.from_connection_string(conn_str)
+    
+    # 1. Recursive Upload of the Data Folder
+    print(f"📤 Uploading results to {container}/{job_id}/data/...")
+    for file_path in local_dir.rglob("*"):
+        if file_path.is_file():
+            # Construct blob path: {job_id}/data/{filename}
+            blob_path = f"{job_id}/data/{file_path.name}"
+            blob_client = service_client.get_blob_client(container=container, blob=blob_path)
+            with open(file_path, "rb") as data:
+                blob_client.upload_blob(data, overwrite=True)
+
+    # 2. Create the 'Light' Summary File
+    summary = {
+        "job_id": job_id,
+        "completion_time": datetime.now().isoformat(),
+        "status": "FAILED" if is_failed else "SUCCESS",
+        "input_summary": {
+            "test_type": inputs.get("TEST_TYPE"),
+            "material": inputs.get("MATERIAL", {}).get("name")
+        },
+        "artifact_manifest": [f.name for f in local_dir.iterdir() if f.is_file()]
+    }
+    
+    summary_blob = service_client.get_blob_client(container=container, blob=f"{job_id}/summary.json")
+    summary_blob.upload_blob(json.dumps(summary, indent=2), overwrite=True)
+    
+    return f"https://{service_client.account_name}.blob.core.windows.net/{container}/{job_id}"
+
 def process_job(job: Dict) -> None:
     """
-    Process a single FEA job from start to finish.
+    Process a single FEA job: Execute, Archive to Azure, Summarize, and Cleanup.
     """
     job_id = job["job_id"]
     job_name = job["job_name"]
     input_parameters = job["input_parameters"]
     
     print("\n" + "=" * 70)
-    print(f"📋 Processing Job: {job_name} (ID: {job_id})")
+    print(f"📋 STARTING JOB: {job_name} (ID: {job_id})")
     print("=" * 70)
     
-    # Step 1: Mark job as RUNNING
-    if not update_job_status(job_id, "RUNNING", "Worker agent acquired job and started processing"):
+    # 1. Mark status: RUNNING
+    if not update_job_status(job_id, "RUNNING", "Worker initiated local FEA execution"):
         print(f"⚠️  Failed to mark job as RUNNING. Skipping job.")
         return
     
+    job_dir = None
     try:
-        # Step 2: Prepare job directory and config
+        # 2. Prepare local workspace
         job_dir = prepare_job_directory(job_id, input_parameters)
         
-        # Step 3: Execute Abaqus simulation
+        # 3. Execute Abaqus via Engine Container (The Sidecar Bridge)
         success = run_abaqus_simulation(job_dir, job_id)
         
-        # Step 4: Report final status
         if success:
+            print(f"✅ Simulation successful. Starting Azure Artifact Persistence...")
+            
+            # 4. Generate AI-Ready Summary and Upload to Azure
+            # We wrap this in a sub-try to ensure simulation failure logic works separately
+            azure_uri = upload_job_artifacts_to_azure(job_id, job_dir, input_parameters)
+            
             update_job_status(
                 job_id,
                 "COMPLETED",
-                f"Abaqus simulation completed successfully. Output in {job_dir}"
+                f"Simulation success. Artifacts stored at: {azure_uri}"
             )
-            print(f"✅ Job {job_id} marked as COMPLETED")
+            print(f"🎊 Job {job_id} fully archived and COMPLETED.")
         else:
             update_job_status(
                 job_id,
                 "FAILED",
-                f"Abaqus simulation failed. Check logs in {job_dir}"
+                f"Abaqus solver returned non-zero exit code. Check 'data/' logs in Azure."
             )
-            print(f"❌ Job {job_id} marked as FAILED")
+            # Even on failure, we might want to upload logs for debugging
+            upload_job_artifacts_to_azure(job_id, job_dir, input_parameters, is_failed=True)
+            print(f"❌ Job {job_id} marked as FAILED.")
     
     except Exception as e:
-        print(f"❌ Unexpected error processing job: {e}")
-        update_job_status(
-            job_id,
-            "FAILED",
-            f"Worker encountered unexpected error: {str(e)}"
-        )
+        print(f"❌ Unexpected error: {e}")
+        update_job_status(job_id, "FAILED", f"Worker Exception: {str(e)}")
+    
+    finally:
+        # 5. Critical Cleanup: Ensure the 4GB VM disk doesn't fill up
+        if job_dir and job_dir.exists():
+            shutil.rmtree(job_dir)
+            print(f"🧹 Local cleanup: Deleted {job_dir}")
 
 
 # --- Main Polling Loop ---
