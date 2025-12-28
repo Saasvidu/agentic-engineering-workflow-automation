@@ -1,0 +1,81 @@
+name: Deploy MCP Server to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "services/mcp-server/**"
+      - "shared/**"
+      - "Dockerfile.mcp-server"
+      - ".github/workflows/deploy-mcp-server.yml"
+
+env:
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  CONTAINER_APP_NAME: ${{ secrets.CONTAINER_APP_NAME }}
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.ACR_NAME }}.azurecr.io/mcp-server
+          tags: |
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.mcp-server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Azure Container Apps
+        run: |
+          # Use the latest tag (also pushed with SHA tag: main-<short-sha>)
+          # Using 'latest' ensures we deploy the most recent build from main branch
+          IMAGE_TAG="${{ secrets.ACR_NAME }}.azurecr.io/mcp-server:latest"
+
+          # Update the container app with the new image
+          az containerapp update \
+            --name ${{ secrets.CONTAINER_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --image "$IMAGE_TAG" \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment completed successfully!"
+          echo "Container App: ${{ secrets.CONTAINER_APP_NAME }}"
+          echo "Resource Group: ${{ secrets.RESOURCE_GROUP }}"
