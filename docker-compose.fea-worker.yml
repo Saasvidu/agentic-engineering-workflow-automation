@@ -1,11 +1,11 @@
-version: '3.8'
+version: "3.8"
 
 services:
   abaqus-engine:
     image: abaqusregistry.azurecr.io/abaqus_2024_le:v1
     container_name: abaqus_engine
     platform: linux/amd64
-    shm_size: '2gb'
+    shm_size: "2gb"
     ports:
       - "6901:6901"
     environment:
@@ -20,6 +20,8 @@ services:
     container_name: fea_worker
     depends_on:
       - abaqus-engine
+    env_file:
+      - ./services/fea-worker/.env
     volumes:
       - ./shared_data:/app/jobs
       - /var/run/docker.sock:/var/run/docker.sock # The Bridge
@@ -27,7 +29,5 @@ services:
     stdin_open: true
     environment:
       - DOCKER_ENV=true
-      - MCP_SERVER_URL=https://mcp-server.yellowtree-5333905a.australiaeast.azurecontainerapps.io
-      - ABAQUS_CMD_PATH=abaqus
       - ENGINE_CONTAINER_NAME=abaqus_engine
     restart: on-failure
