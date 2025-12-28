@@ -1,13 +1,10 @@
-# conversions.py
 """
-Utility functions for converting between FEAJobContext (Pydantic) and FEAJob (SQLAlchemy).
-This module provides clean conversion functions to eliminate manual conversion code.
+Conversion utilities between FEAJobContext (Pydantic) and FEAJob (SQLAlchemy).
 """
 
 import sys
 from pathlib import Path
 
-# Add parent directories to path to import shared schema
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.mcp_schema import FEAJobContext, AbaqusInput
@@ -19,7 +16,7 @@ def pydantic_to_db(pydantic_job: FEAJobContext) -> FEAJob:
     Convert FEAJobContext (Pydantic) to FEAJob (SQLAlchemy) for database storage.
     
     Args:
-        pydantic_job: The Pydantic FEAJobContext instance
+        pydantic_job: Pydantic FEAJobContext instance
         
     Returns:
         FEAJob SQLAlchemy instance ready for database operations
@@ -39,7 +36,7 @@ def db_to_pydantic(db_job: FEAJob) -> FEAJobContext:
     Convert FEAJob (SQLAlchemy) to FEAJobContext (Pydantic) for API responses.
     
     Args:
-        db_job: The SQLAlchemy FEAJob instance from database
+        db_job: SQLAlchemy FEAJob instance from database
         
     Returns:
         FEAJobContext Pydantic instance ready for API serialization

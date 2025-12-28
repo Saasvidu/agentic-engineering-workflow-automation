@@ -1,11 +1,9 @@
-# orchestrator.py
 """
 Main orchestrator entry point for FEA simulation job submission.
 """
 
 from langchain_core.messages import HumanMessage
 
-# Handle imports - try absolute first, fall back to relative
 try:
     from orchestrator.state import AgentState
     from orchestrator.graph import create_orchestrator_graph

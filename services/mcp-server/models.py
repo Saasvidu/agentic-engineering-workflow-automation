@@ -1,4 +1,14 @@
-# models.py
+"""
+SQLAlchemy database models for MCP server.
+
+This module imports FEAJobContext from shared schema and provides conversion utilities.
+The FEAJob model mirrors FEAJobContext but is optimized for database storage.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
@@ -7,26 +17,21 @@ from datetime import datetime
 
 Base = declarative_base()
 
+
 class FEAJob(Base):
     """
     SQLAlchemy model for storing FEA job contexts.
-    Uses JSONB for flexible storage of input parameters and logs.
     
-    This model mirrors the structure of FEAJobContext from shared.mcp_schema,
-    but is optimized for database storage. Use conversion utilities to convert
-    between FEAJob (SQLAlchemy) and FEAJobContext (Pydantic).
+    Uses JSONB for flexible storage of input parameters and logs.
+    Mirrors FEAJobContext structure but optimized for database storage.
+    Use conversion utilities to convert between FEAJob and FEAJobContext.
     """
     __tablename__ = "fea_jobs"
     
-    # Primary Key
     job_id = Column(String, primary_key=True, index=True)
-    
-    # Metadata
     job_name = Column(String, nullable=False, index=True)
     current_status = Column(String, nullable=False, index=True)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
-    # Flexible JSON storage for complex nested data
     input_parameters = Column(JSONB, nullable=False)
     logs = Column(JSONB, default=list, nullable=False)
     

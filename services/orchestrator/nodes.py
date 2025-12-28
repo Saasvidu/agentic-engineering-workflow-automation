@@ -1,6 +1,6 @@
-# nodes.py
 """
 Agent node functions for the orchestrator workflow.
+
 Each function represents a step in the FEA job submission pipeline.
 """
 
@@ -9,11 +9,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import sys
 from pathlib import Path
 
-# Add parent directories to path to import shared schema
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.mcp_schema import AbaqusInput
 
-# Handle imports - try absolute first, fall back to relative
 try:
     from orchestrator.config import MCP_SERVER_URL, llm
     from orchestrator.prompts import PARSE_REQUEST_PROMPT
@@ -23,27 +21,27 @@ except ImportError:
     from .prompts import PARSE_REQUEST_PROMPT
     from .state import AgentState
 
-# Create structured LLM for parsing
 structured_llm = llm.with_structured_output(AbaqusInput)
 
 
 def parse_request(state: AgentState) -> AgentState:
     """
-    Node 1: Parse Request
-    Uses OpenAI to convert natural language input into a structured
-    AbaqusInput configuration.
+    Parse natural language input into structured AbaqusInput configuration.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        Updated state with structured_config or validation_error
     """
     print("🔍 [Node: parse_request] Extracting structured data from user input...")
     
-    user_input = state["raw_input"]
-    
     messages = [
         SystemMessage(content=PARSE_REQUEST_PROMPT),
-        HumanMessage(content=f"Convert this simulation request into structured parameters: {user_input}")
+        HumanMessage(content=f"Convert this simulation request into structured parameters: {state['raw_input']}")
     ]
     
     try:
-        # Invoke the structured LLM
         structured_config = structured_llm.invoke(messages)
         
         print(f"✅ Successfully parsed configuration:")
@@ -67,10 +65,15 @@ def parse_request(state: AgentState) -> AgentState:
 
 def validate_physics(state: AgentState) -> AgentState:
     """
-    Node 2: Validate Physics
-    Performs engineering validation on the parsed AbaqusInput configuration.
-    Ensures the parameters are physically realistic and compliant with FEA best practices.
-    Returns the state with validation errors if any.
+    Perform engineering validation on parsed configuration.
+    
+    Validates aspect ratio, material properties, discretization, and loading.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        Updated state with validation_error if validation fails
     """
     print("🔬 [Node: validate_physics] Performing engineering validation...")
     structured_config = state.get("structured_config")
@@ -79,37 +82,35 @@ def validate_physics(state: AgentState) -> AgentState:
         state["validation_error"] = "No structured configuration to validate"
         return state
 
-    # Check aspect ratio
     if structured_config.GEOMETRY.length_m / structured_config.GEOMETRY.width_m < 10:
         state["validation_error"] = "Aspect ratio is too large. Should be at least 10:1."
         return state
 
-    # Check material properties
     if structured_config.MATERIAL.youngs_modulus_pa < 1e9:
         state["validation_error"] = "Young's modulus is too low. Should be at least 1 GPa."
         return state
 
-    # Check discretization
     if structured_config.DISCRETIZATION.elements_length < 10:
         state["validation_error"] = "Discretization is too coarse. Should be at least 10 elements."
         return state
 
-    # Check loading
     if structured_config.LOADING.tip_load_n < 1000:
         state["validation_error"] = "Loading is too low. Should be at least 1000 N."
         return state
 
-    # Check if all checks passed
     state["validation_error"] = None
     return state
 
 
 def submit_job(state: AgentState) -> AgentState:
     """
-    Node 3: Submit Job
-    Sends the validated AbaqusInput configuration to the MCP Server via POST request.
-    The server will initialize a new FEA job and return a job context.
-    Returns the state with submission errors if any.
+    Submit validated configuration to MCP server.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        Updated state with submission_status
     """
     print("🚀 [Node: submit_job] Submitting job to MCP Server...")
     
@@ -121,21 +122,14 @@ def submit_job(state: AgentState) -> AgentState:
         state["messages"].append(AIMessage(content=error_msg))
         return state
     
-    # Prepare the API request
     endpoint = f"{MCP_SERVER_URL}/mcp/init"
     params = {"job_name": structured_config.MODEL_NAME}
     payload = structured_config.model_dump()
     
-    # Debug: Show the endpoint being used
-    print(f"   📡 Endpoint: {endpoint}")
-    print(f"   📡 MCP_SERVER_URL value: {repr(MCP_SERVER_URL)}")
-    
     try:
-        # Make POST request to MCP Server with job_name as query param and config as JSON body
         response = requests.post(endpoint, params=params, json=payload, timeout=10)
         response.raise_for_status()
         
-        # Parse response
         job_context = response.json()
         job_id = job_context.get("job_id", "Unknown")
         
@@ -161,8 +155,13 @@ def submit_job(state: AgentState) -> AgentState:
 
 def should_continue_to_submit(state: AgentState) -> str:
     """
-    Conditional edge function: determines whether to proceed to submission
-    or end the workflow based on validation errors.
+    Determine workflow routing based on validation status.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        "END" if validation error exists, "submit_job" otherwise
     """
     if state.get("validation_error"):
         return "END"

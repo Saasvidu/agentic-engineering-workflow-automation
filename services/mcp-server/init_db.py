@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Database initialization script.
-Run this to create the database tables.
+
+Run this to create database tables.
 """
 
 from database import init_db

@@ -1,6 +1,6 @@
-# config.py
 """
 Configuration and environment setup for the orchestrator.
+
 Handles environment variable loading, sanitization, and validation.
 """
 
@@ -10,7 +10,15 @@ from langchain_openai import ChatOpenAI
 
 
 def sanitize_url(url: str) -> str:
-    """Sanitize URL by removing quotes, whitespace, and trailing slashes."""
+    """
+    Sanitize URL by removing quotes, whitespace, and trailing slashes.
+    
+    Args:
+        url: URL string to sanitize
+        
+    Returns:
+        Sanitized URL string
+    """
     if not url:
         return url
     
@@ -29,8 +37,18 @@ def sanitize_url(url: str) -> str:
 
 def sanitize_api_key(key: str) -> str:
     """
-    Sanitize OpenAI API key by removing whitespace, quotes, and non-ASCII characters.
-    Validates format and provides debug output.
+    Sanitize OpenAI API key and validate format.
+    
+    Removes whitespace, quotes, and non-ASCII characters.
+    
+    Args:
+        key: API key string to sanitize
+        
+    Returns:
+        Sanitized and validated API key
+        
+    Raises:
+        ValueError: If key format is invalid
     """
     if not key:
         return key
@@ -38,22 +56,16 @@ def sanitize_api_key(key: str) -> str:
     original_key = key
     original_length = len(key)
     
-    # Remove leading/trailing whitespace and quotes
     sanitized = key.strip().strip('"').strip("'").strip('`')
-    # Remove control characters
     sanitized = sanitized.replace('\n', '').replace('\r', '').replace('\t', '')
-    # Remove all whitespace
     sanitized = ''.join(sanitized.split())
-    # Remove non-printable characters
     sanitized = ''.join(char for char in sanitized if char.isprintable())
     
-    # Check for non-ASCII characters
     non_ascii_chars = [c for c in sanitized if ord(c) > 127]
     if non_ascii_chars:
         print(f"   ⚠️  Warning: Found {len(non_ascii_chars)} non-ASCII characters in key")
         sanitized = ''.join(char for char in sanitized if ord(char) <= 127)
     
-    # Debug output
     print(f"✅ OPENAI_API_KEY loaded")
     print(f"   Original length: {original_length}, Sanitized length: {len(sanitized)}")
     print(f"   Starts with: {sanitized[:10]}...")
@@ -63,7 +75,6 @@ def sanitize_api_key(key: str) -> str:
     if original_length != len(sanitized):
         print(f"   ⚠️  Key was sanitized (removed {original_length - len(sanitized)} characters)")
     
-    # Validate format
     if not sanitized.startswith("sk-"):
         print(f"   ❌ Invalid key format detected!")
         print(f"   First 20 chars (repr): {repr(sanitized[:20])}")
@@ -80,11 +91,11 @@ def sanitize_api_key(key: str) -> str:
 def get_mcp_server_url() -> str:
     """
     Determine MCP server URL based on environment.
-    - Docker-to-Docker: use service name (mcp-server)
-    - Docker-to-Host: use host.docker.internal
-    - Local: use localhost
+    
+    Returns:
+        MCP server URL string
     """
-    default_url = "http://mcp-server:8000"  # Default for Docker-to-Docker
+    default_url = "http://mcp-server:8000"
     
     if os.getenv("DOCKER_ENV"):
         if os.getenv("MCP_ON_HOST", "false").lower() == "true":
@@ -95,9 +106,16 @@ def get_mcp_server_url() -> str:
 
 
 def get_openai_api_key() -> str:
-    """Load and validate OpenAI API key from environment."""
-    # Load environment variables
-    load_dotenv(override=False)  # Don't override existing env vars (set by Docker)
+    """
+    Load and validate OpenAI API key from environment.
+    
+    Returns:
+        Validated API key string
+        
+    Raises:
+        ValueError: If key is missing or invalid
+    """
+    load_dotenv(override=False)
     
     api_key = os.getenv("OPENAI_API_KEY")
     
@@ -107,15 +125,12 @@ def get_openai_api_key() -> str:
         print(f"   Environment variables containing 'OPENAI': {[k for k in os.environ.keys() if 'OPENAI' in k.upper()]}")
         raise ValueError("OPENAI_API_KEY not found in environment variables.")
     
-    # Sanitize and validate
     api_key = sanitize_api_key(api_key)
     
-    # Ensure it's a string
     if not isinstance(api_key, str):
         api_key = str(api_key)
     
-    # Final validation
-    if len(api_key) < 20:  # OpenAI keys are typically 51+ characters
+    if len(api_key) < 20:
         raise ValueError(f"API key seems too short (length: {len(api_key)}). Please verify your key.")
     
     return api_key
@@ -123,13 +138,13 @@ def get_openai_api_key() -> str:
 
 def create_llm(api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.0) -> ChatOpenAI:
     """
-    Create and configure the OpenAI LLM instance.
+    Create and configure OpenAI LLM instance.
     
     Args:
         api_key: OpenAI API key
         model: Model name (default: gpt-4o-mini)
         temperature: Temperature for generation (default: 0.0 for deterministic parsing)
-    
+        
     Returns:
         Configured ChatOpenAI instance
     """

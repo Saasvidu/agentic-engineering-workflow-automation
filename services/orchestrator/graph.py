@@ -1,11 +1,9 @@
-# graph.py
 """
 Graph creation and orchestration logic for the FEA workflow.
 """
 
 from langgraph.graph import StateGraph, END
 
-# Handle imports - try absolute first, fall back to relative
 try:
     from orchestrator.state import AgentState
     from orchestrator.nodes import parse_request, validate_physics, submit_job, should_continue_to_submit
@@ -23,12 +21,10 @@ def create_orchestrator_graph() -> StateGraph:
     """
     workflow = StateGraph(AgentState)
     
-    # Add nodes
     workflow.add_node("parse_request", parse_request)
     workflow.add_node("validate_physics", validate_physics)
     workflow.add_node("submit_job", submit_job)
     
-    # Define edges
     workflow.set_entry_point("parse_request")
     workflow.add_edge("parse_request", "validate_physics")
     workflow.add_conditional_edges(

@@ -1,4 +1,3 @@
-# state.py
 """
 Agent state definition for the orchestrator workflow.
 """
@@ -9,7 +8,6 @@ from langgraph.graph.message import add_messages
 import sys
 from pathlib import Path
 
-# Add parent directories to path to import shared schema
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from shared.mcp_schema import AbaqusInput
 
