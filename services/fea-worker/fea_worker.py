@@ -10,12 +10,23 @@ import sys
 import time
 import json
 import shutil
+import threading
 from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime
 import requests
 from dotenv import load_dotenv
 from azure.storage.blob import BlobServiceClient
+from flask import Flask, jsonify
+
+# Ensure unbuffered output for better logging in containers
+# Set PYTHONUNBUFFERED=1 in Dockerfile for best results
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass  # Fallback to default buffering if reconfigure fails
 
 # Load environment variables
 load_dotenv()
@@ -36,9 +47,25 @@ ABAQUS_TIMEOUT_SECONDS = int(os.getenv("ABAQUS_TIMEOUT_SECONDS", "1800"))
 AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 AZURE_STORAGE_CONTAINER_NAME = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "fea-job-data")
 
+# Health Check Server Configuration
+HEALTH_CHECK_PORT = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
+
 # Local Paths
 JOBS_DIR = Path(__file__).parent / "jobs"
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
+
+# Initialize Flask app for health checks
+app = Flask(__name__)
+
+@app.route("/health", methods=["GET"])
+@app.route("/", methods=["GET"])
+def health_check():
+    """Health check endpoint for Azure Container Apps probes."""
+    return jsonify({
+        "status": "healthy",
+        "service": "fea-worker",
+        "jobs_directory": str(JOBS_DIR)
+    }), 200
 
 # Ensure jobs directory exists
 JOBS_DIR.mkdir(exist_ok=True)
@@ -316,28 +343,77 @@ def process_job(job: Dict) -> None:
 # Main Polling Loop
 # ============================================================================
 
-def main():
+def run_worker_loop():
     """
     Main polling loop that continuously checks for new jobs from MCP server.
     """
-    print("\n🔄 Starting polling loop... (Press Ctrl+C to stop)\n")
+    print("\n🔄 Starting polling loop... (Press Ctrl+C to stop)\n", flush=True)
     
     try:
+        poll_count = 0
         while True:
+            poll_count += 1
+            if poll_count % 10 == 0:  # Print status every 10 polls (every 50 seconds)
+                print(f"💤 Worker active - Poll #{poll_count} (no jobs in queue)", flush=True)
+            
             job = get_next_job()
             
             if job:
                 process_job(job)
             else:
-                print(f"💤 No jobs in queue. Waiting {POLL_INTERVAL_SECONDS}s...", end="\r")
+                # Only print occasionally to avoid log spam
+                if poll_count <= 3:  # Print first few polls for debugging
+                    print(f"💤 No jobs in queue. Waiting {POLL_INTERVAL_SECONDS}s...", flush=True)
                 time.sleep(POLL_INTERVAL_SECONDS)
     
     except KeyboardInterrupt:
-        print("\n\n⛔ Worker shutdown requested by user.")
-        print("=" * 70)
+        print("\n\n⛔ Worker shutdown requested by user.", flush=True)
+        print("=" * 70, flush=True)
         sys.exit(0)
     except Exception as e:
-        print(f"\n\n❌ Fatal error in worker: {e}")
+        print(f"\n\n❌ Fatal error in worker: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def run_health_server():
+    """Run Flask health check server in a separate thread."""
+    try:
+        print(f"🏥 Starting health check server on port {HEALTH_CHECK_PORT}...")
+        app.run(host="0.0.0.0", port=HEALTH_CHECK_PORT, debug=False, use_reloader=False)
+    except Exception as e:
+        print(f"❌ Health server error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def main():
+    """
+    Main entry point: starts health check server and worker loop.
+    """
+    print("=" * 70, flush=True)
+    print("🚀 FEA Worker Starting...", flush=True)
+    print("=" * 70, flush=True)
+    
+    try:
+        # Start health check server in a background thread
+        print("📡 Initializing health check server thread...", flush=True)
+        health_thread = threading.Thread(target=run_health_server, daemon=True)
+        health_thread.start()
+        
+        # Give the health server a moment to start
+        print("⏳ Waiting for health server to initialize...", flush=True)
+        time.sleep(2)
+        print("✅ Health server started successfully", flush=True)
+        print("🔄 Starting worker polling loop...", flush=True)
+        
+        # Run the worker loop in the main thread
+        run_worker_loop()
+    except Exception as e:
+        print(f"❌ Fatal error in main: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

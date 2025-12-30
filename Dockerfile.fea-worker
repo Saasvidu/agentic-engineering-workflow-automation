@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
+RUN rm -rf /var/lib/apt/lists/*
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -19,7 +19,13 @@ RUN uv sync
 # Create jobs directory for runtime job storage
 RUN mkdir -p /app/jobs
 
+# Expose health check port (Azure Container Apps uses 8080 by default)
+EXPOSE 8080
+
+# Set Python to unbuffered mode for better logging in containers
+ENV PYTHONUNBUFFERED=1
+
 # Run the worker using the virtual environment
-# All configuration is done via environment variables in .env file
-# Use uv to run the script, ensuring the virtualenv is active
-CMD ["/app/.venv/bin/python", "fea_worker.py"]
+# All configuration is done via environment variables
+# Use relative path for consistency with other Dockerfiles
+CMD [".venv/bin/python", "fea_worker.py"]
