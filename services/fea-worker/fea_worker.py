@@ -332,11 +332,11 @@ def process_job(job: Dict) -> None:
         print(f"❌ Unexpected error: {e}")
         update_job_status(job_id, "FAILED", f"Worker Exception: {str(e)}")
     
-    finally:
+    # finally:
         # Cleanup local files to prevent disk space issues
-        if job_dir and job_dir.exists():
-            shutil.rmtree(job_dir)
-            print(f"🧹 Local cleanup: Deleted {job_dir}")
+        # if job_dir and job_dir.exists():
+        #     shutil.rmtree(job_dir)
+        #     print(f"🧹 Local cleanup: Deleted {job_dir}")
 
 
 # ============================================================================

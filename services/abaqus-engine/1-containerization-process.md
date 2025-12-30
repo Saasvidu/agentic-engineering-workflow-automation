@@ -162,8 +162,9 @@ Run Abaqus on a 4GB RAM node while still allowing browser-based inspection.
 
 ```bash
 docker run -d \
-  --name abq_worker_01 \
+  --name abq_worker \
   -p 6901:6901 \
+  -p 5000:5000 \
   --shm-size=1g \
   --memory="3.5g" \
   -e VNC_PW=password123 \
@@ -177,12 +178,3 @@ docker run -d \
   https://github.com/mwierszycki/abaqus_le_linux_wine/tree/main/2024
 
 
-docker run -d \
-  --name abq_worker \
-  -p 6901:6901 \
-  -p 5000:5000 \
-  --shm-size=1g \
-  --memory="3.5g" \
-  -e VNC_PW=password123 \
-  -v /mnt/abaqus_data:/home/kasm_user/work \
-  abaqusregistry.azurecr.io/abaqus_2024_le:v2-api
