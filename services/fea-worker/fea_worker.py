@@ -10,7 +10,6 @@ import sys
 import time
 import json
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime
@@ -30,7 +29,7 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 
 # Abaqus Engine Configuration
-ENGINE_CONTAINER_NAME = os.getenv("ENGINE_CONTAINER_NAME", "abaqus_engine")
+ABAQUS_ENGINE_URL = os.getenv("ABAQUS_ENGINE_URL", "http://abaqus-engine:5000")
 ABAQUS_TIMEOUT_SECONDS = int(os.getenv("ABAQUS_TIMEOUT_SECONDS", "1800"))
 
 # Azure Blob Storage Configuration
@@ -48,11 +47,12 @@ JOBS_DIR.mkdir(exist_ok=True)
 print("=" * 70)
 print("FEA WORKER AGENT")
 print("=" * 70)
-print(f"API Base URL: {MCP_SERVER_URL}")
+print(f"MCP Server URL: {MCP_SERVER_URL}")
 print(f"Poll Interval: {POLL_INTERVAL_SECONDS}s")
 print(f"Jobs Directory: {JOBS_DIR}")
 print(f"Simulation Runner: {SIMULATION_RUNNER_PATH}")
-print(f"Engine Container: {ENGINE_CONTAINER_NAME}")
+print(f"Abaqus Engine URL: {ABAQUS_ENGINE_URL}")
+print(f"Abaqus Engine Endpoint: {ABAQUS_ENGINE_URL}/run")
 print(f"Abaqus Timeout: {ABAQUS_TIMEOUT_SECONDS}s")
 print("=" * 70)
 
@@ -148,18 +148,15 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
     """
     print(f"🚀 Dispatching Abaqus job {job_id} via Network Bridge...")
     
-    # In Docker Compose, services talk to each other by service name
-    # We use port 5000 as configured in your engine commit
-    ENGINE_API_URL = "http://abaqus-engine:5000/run"
-    
     payload = {
         "job_id": job_id
     }
     
     try:
-        # Note: We use a long timeout because FEA can take a while
+        # Use a long timeout because FEA can take a while
+        # Note: Engine API expects POST to /run endpoint
         response = requests.post(
-            ENGINE_API_URL, 
+            f"{ABAQUS_ENGINE_URL}/run", 
             json=payload, 
             timeout=ABAQUS_TIMEOUT_SECONDS
         )
@@ -168,15 +165,32 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
             print(f"✅ Engine completed job {job_id}")
             return True
         else:
-            error_data = response.json() if response.content else {}
-            print(f"❌ Engine API Error ({response.status_code}): {error_data.get('stderr', 'No logs')}")
+            # Safely parse JSON response, handling empty or invalid JSON
+            error_data = {}
+            if response.content:
+                try:
+                    error_data = response.json()
+                except ValueError as json_err:
+                    # Response has content but isn't valid JSON
+                    print(f"⚠️  Response is not JSON: {response.text[:200]}")
+                    error_data = {"raw_response": response.text[:200]}
+            
+            error_msg = error_data.get('stderr') or error_data.get('message') or error_data.get('details') or 'No error details'
+            print(f"❌ Engine API Error ({response.status_code}): {error_msg}")
             return False
             
+    except requests.exceptions.ConnectionError as e:
+        print(f"❌ Bridge Error: Cannot connect to Abaqus engine at {ABAQUS_ENGINE_URL}")
+        print(f"   Check that ABAQUS_ENGINE_URL is correct and the service is running")
+        return False
     except requests.exceptions.Timeout:
         print(f"❌ Bridge Error: Simulation timed out after {ABAQUS_TIMEOUT_SECONDS}s")
         return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network Bridge Error: {type(e).__name__}: {e}")
+        return False
     except Exception as e:
-        print(f"❌ Network Bridge Error: {e}")
+        print(f"❌ Unexpected error during simulation: {type(e).__name__}: {e}")
         return False
 
 def upload_job_artifacts_to_azure(job_id: str, local_dir: Path, inputs: Dict, is_failed: bool = False) -> str:

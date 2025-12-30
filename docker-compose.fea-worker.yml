@@ -25,7 +25,6 @@ services:
       - ./services/fea-worker/.env
     volumes:
       - ./shared_data:/app/jobs
-      # - /var/run/docker.sock:/var/run/docker.sock # The Bridge
     tty: true
     stdin_open: true
     restart: on-failure
