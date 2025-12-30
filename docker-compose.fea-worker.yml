@@ -4,10 +4,11 @@ services:
   abaqus-engine:
     image: abaqusregistry.azurecr.io/abaqus_2024_le:v3-final
     container_name: abaqus_engine
+    platform: linux/amd64
     shm_size: "2gb"
     ports:
       - "6901:6901"
-      - "5000:5000" # Explicitly expose the API port
+      - "5000:5000"
     environment:
       - VNC_PW=password
     volumes:
@@ -16,7 +17,6 @@ services:
 
   fea-worker:
     build:
-      context: .
       dockerfile: Dockerfile.fea-worker
     container_name: fea_worker
     depends_on:
@@ -25,7 +25,7 @@ services:
       - ./services/fea-worker/.env
     volumes:
       - ./shared_data:/app/jobs
-    environment:
-      - DOCKER_ENV=true
-      - ENGINE_URL=http://abaqus-engine:5000
+      # - /var/run/docker.sock:/var/run/docker.sock # The Bridge
+    tty: true
+    stdin_open: true
     restart: on-failure
