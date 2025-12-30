@@ -144,47 +144,39 @@ def prepare_job_directory(job_id: str, input_parameters: Dict) -> Path:
 
 def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
     """
-    Execute Abaqus simulation via Docker bridge to engine container.
-    
-    Args:
-        job_dir: Local job directory path
-        job_id: Unique job identifier
-        
-    Returns:
-        True if simulation succeeded, False otherwise.
+    Execute Abaqus simulation via the new REST API bridge.
     """
-    print(f"🚀 Dispatching Abaqus job {job_id} to Engine container...")
+    print(f"🚀 Dispatching Abaqus job {job_id} via Network Bridge...")
     
-    # Map worker path to engine path (shared volume mount)
-    # Worker: /app/jobs/JOB_ID -> Engine: /home/kasm_user/work/JOB_ID
-    engine_work_dir = f"/home/kasm_user/work/{job_id}"
+    # In Docker Compose, services talk to each other by service name
+    # We use port 5000 as configured in your engine commit
+    ENGINE_API_URL = "http://abaqus-engine:5000/run"
     
-    # Abaqus command with Wine environment variables
-    full_command = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI simulation_runner.py"
-    
-    docker_cmd = [
-        "docker", "exec",
-        "-w", engine_work_dir,
-        ENGINE_CONTAINER_NAME,
-        "/bin/bash", "-c", full_command
-    ]
+    payload = {
+        "job_id": job_id
+    }
     
     try:
-        result = subprocess.run(
-            docker_cmd,
-            capture_output=True,
-            text=True,
+        # Note: We use a long timeout because FEA can take a while
+        response = requests.post(
+            ENGINE_API_URL, 
+            json=payload, 
             timeout=ABAQUS_TIMEOUT_SECONDS
         )
         
-        if result.returncode == 0:
+        if response.status_code == 200:
             print(f"✅ Engine completed job {job_id}")
             return True
         else:
-            print(f"❌ Engine failed: {result.stderr}")
+            error_data = response.json() if response.content else {}
+            print(f"❌ Engine API Error ({response.status_code}): {error_data.get('stderr', 'No logs')}")
             return False
+            
+    except requests.exceptions.Timeout:
+        print(f"❌ Bridge Error: Simulation timed out after {ABAQUS_TIMEOUT_SECONDS}s")
+        return False
     except Exception as e:
-        print(f"❌ Bridge Error: {e}")
+        print(f"❌ Network Bridge Error: {e}")
         return False
 
 def upload_job_artifacts_to_azure(job_id: str, local_dir: Path, inputs: Dict, is_failed: bool = False) -> str:
