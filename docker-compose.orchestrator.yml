@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    image: orchestrator
+    container_name: orchestrator
+    ports:
+      - "8501:8501"
+    env_file:
+      - ./services/orchestrator/.env
+    restart: unless-stopped
+

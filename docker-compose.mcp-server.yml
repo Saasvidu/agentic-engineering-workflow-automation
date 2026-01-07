@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp-server
+    image: mcp-server
+    container_name: mcp_server
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./services/mcp-server/.env
+    restart: unless-stopped
+
