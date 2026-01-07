@@ -12,4 +12,3 @@ services:
     env_file:
       - ./services/mcp-server/.env
     restart: unless-stopped
-
