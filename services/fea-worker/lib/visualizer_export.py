@@ -18,7 +18,7 @@ try:
     TRIMESH_AVAILABLE = True
 except ImportError:
     TRIMESH_AVAILABLE = False
-    print("⚠️  trimesh not available, GLB export will be skipped")
+    print("[WARN] trimesh not available, GLB export will be skipped")
 
 try:
     import pygltf
@@ -55,7 +55,7 @@ def get_model_name_from_config():
         raw_name = config.get('MODEL_NAME', 'Not_Found')
         return "Job_" + str(raw_name).replace("-", "_")[:35]
     except Exception as e:
-        print(f"⚠️  Could not read config.json: {e}")
+        print(f"[WARN] Could not read config.json: {e}")
         return None
 
 
@@ -94,7 +94,7 @@ def export_vtu(odb_path, output_path='mesh.vtu'):
         odb_path: Path to the ODB file
         output_path: Output VTU file path
     """
-    print(f"📊 Exporting VTU mesh from {odb_path}...")
+    print(f"[INFO] Exporting VTU mesh from {odb_path}...")
     
     odb = openOdb(path=odb_path)
     
@@ -235,7 +235,7 @@ def export_vtu(odb_path, output_path='mesh.vtu'):
         f.write('</VTKFile>\n')
     
     odb.close()
-    print(f"✅ VTU export complete: {output_path}")
+    print(f"[SUCCESS] VTU export complete: {output_path}")
 
 
 def export_preview_png(odb_path, output_path='preview.png'):
@@ -246,7 +246,7 @@ def export_preview_png(odb_path, output_path='preview.png'):
         odb_path: Path to the ODB file
         output_path: Output PNG file path
     """
-    print(f"📸 Exporting preview PNG from {odb_path}...")
+    print(f"[INFO] Exporting preview PNG from {odb_path}...")
     
     try:
         # Open ODB (keep it open for viewport display)
@@ -309,10 +309,10 @@ def export_preview_png(odb_path, output_path='preview.png'):
         # Close ODB after export
         odb.close()
         
-        print(f"✅ PNG export complete: {output_path}")
+        print(f"[SUCCESS] PNG export complete: {output_path}")
         
     except Exception as e:
-        print(f"⚠️  PNG export failed: {e}")
+        print(f"[WARN] PNG export failed: {e}")
         import traceback
         traceback.print_exc()
         # Ensure ODB is closed even on error
@@ -332,10 +332,10 @@ def export_glb(odb_path, output_path='mesh.glb'):
         output_path: Output GLB file path
     """
     if not TRIMESH_AVAILABLE:
-        print("⚠️  GLB export skipped: trimesh library not available")
+        print("[WARN] GLB export skipped: trimesh library not available")
         return
     
-    print(f"🎨 Exporting GLB mesh from {odb_path}...")
+    print(f"[INFO] Exporting GLB mesh from {odb_path}...")
     
     try:
         odb = openOdb(path=odb_path)
@@ -406,10 +406,10 @@ def export_glb(odb_path, output_path='mesh.glb'):
         mesh.export(output_path)
         
         odb.close()
-        print(f"✅ GLB export complete: {output_path}")
+        print(f"[SUCCESS] GLB export complete: {output_path}")
         
     except Exception as e:
-        print(f"⚠️  GLB export failed: {e}")
+        print(f"[WARN] GLB export failed: {e}")
         import traceback
         traceback.print_exc()
 
@@ -429,39 +429,39 @@ def main():
         if model_name:
             odb_path = model_name + '.odb'
         else:
-            print("❌ Could not find ODB file")
+            print("[ERROR] Could not find ODB file")
             return
     
     if not os.path.exists(odb_path):
-        print(f"❌ ODB file not found: {odb_path}")
+        print(f"[ERROR] ODB file not found: {odb_path}")
         return
     
-    print(f"📂 Processing ODB: {odb_path}")
+    print(f"[INFO] Processing ODB: {odb_path}")
     
     # Export artifacts
     try:
         export_vtu(odb_path, 'mesh.vtu')
     except Exception as e:
-        print(f"❌ VTU export failed: {e}")
+        print(f"[ERROR] VTU export failed: {e}")
         import traceback
         traceback.print_exc()
     
-    try:
-        export_preview_png(odb_path, 'preview.png')
-    except Exception as e:
-        print(f"❌ PNG export failed: {e}")
-        import traceback
-        traceback.print_exc()
+    # try:
+    #     export_preview_png(odb_path, 'preview.png')
+    # except Exception as e:
+    #     print(f"[ERROR] PNG export failed: {e}")
+    #     import traceback
+    #     traceback.print_exc()
     
     try:
         export_glb(odb_path, 'mesh.glb')
     except Exception as e:
-        print(f"❌ GLB export failed: {e}")
+        print(f"[ERROR] GLB export failed: {e}")
         import traceback
         traceback.print_exc()
     
     print("=" * 70)
-    print("✅ Visualizer export complete")
+    print("[SUCCESS] Visualizer export complete")
     print("=" * 70)
 
 
