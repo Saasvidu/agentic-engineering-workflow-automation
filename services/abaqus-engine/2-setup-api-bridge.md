@@ -38,10 +38,47 @@ def run_simulation():
     except Exception as e:
         return jsonify({"status": "exception", "details": str(e)}), 500
 
+@app.route('/postprocess', methods=['POST'])
+def run_postprocessing():
+    """
+    Execute post-processing visualization export script.
+
+    This endpoint runs after simulation completes to export visualization artifacts
+    (VTU mesh, PNG preview, GLB mesh) from the ODB file.
+    """
+    data = request.json
+    job_id = data.get('job_id')
+    work_dir = f"/home/kasm-user/work/{job_id}"
+
+    if not os.path.exists(work_dir):
+        return jsonify({"status": "error", "message": f"Path not found: {work_dir}"}), 404
+
+    # Abaqus Execution Command via Wine for post-processing
+    cmd = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI visualizer_export.py"
+
+    try:
+        result = subprocess.run(cmd, shell=True, cwd=work_dir, capture_output=True, text=True)
+        if result.returncode == 0:
+            return jsonify({"status": "success", "output": result.stdout}), 200
+        else:
+            return jsonify({"status": "error", "stderr": result.stderr}), 500
+    except Exception as e:
+        return jsonify({"status": "exception", "details": str(e)}), 500
+
 if __name__ == '__main__':
     # Listen on 0.0.0.0 to allow Docker port mapping
     app.run(host='0.0.0.0', port=5000)
 ```
+
+## 2.1 Post-Processing Endpoint
+
+The `/postprocess` endpoint executes visualization export after simulation completes. It runs the `visualizer_export.py` script inside the Abaqus Python environment to generate:
+
+- **mesh.vtu**: VTK Unstructured Grid format with nodal coordinates, element connectivity, displacement vectors, and von Mises stress
+- **preview.png**: Abaqus viewport screenshot showing deformed shape with von Mises stress contour
+- **mesh.glb**: 3D mesh in GLB format (if trimesh library is available)
+
+The post-processing step is triggered by the FEA worker after the `/run` endpoint completes successfully.
 
 ## 3. The "Surgery" (Step-by-Step)
 
@@ -63,7 +100,7 @@ On the Azure VM Host (`fea-worker-04`), we captured the state of the `abq_worker
 docker commit \
 --change='ENTRYPOINT ["/bin/bash", "-c", "python3 /home/kasm-user/engine_api.py & /dockerstartup/vnc_startup.sh"]' \
 abq_worker \
-abaqusregistry.azurecr.io/abaqus_2024_le:v3-final
+abaqusregistry.azurecr.io/abaqus_2024_le:[version]
 ```
 
 ### Step D: Registry Deployment
@@ -84,5 +121,13 @@ The system now utilizes a **Parallel Startup Model**:
 
 ### The Handshake
 
-- **Orchestrator**: Sends a POST to `http://<worker-ip>:5000/run` with a `job_id`.
-- **Container**: Subprocess triggers Wine/Abaqus, solves the model, and returns the exit code and logs as a JSON response.
+**Two-Stage Execution Flow:**
+
+1. **Simulation Stage**:
+
+   - **FEA Worker**: Sends a POST to `http://<worker-ip>:5000/run` with a `job_id`.
+   - **Container**: Subprocess triggers Wine/Abaqus, executes `simulation_runner.py`, solves the model, and returns the exit code and logs as a JSON response.
+
+2. **Post-Processing Stage** (after simulation succeeds):
+   - **FEA Worker**: Sends a POST to `http://<worker-ip>:5000/postprocess` with a `job_id`.
+   - **Container**: Subprocess triggers Wine/Abaqus, executes `visualizer_export.py`, exports visualization artifacts (VTU, PNG, GLB), and returns the exit code and logs as a JSON response.

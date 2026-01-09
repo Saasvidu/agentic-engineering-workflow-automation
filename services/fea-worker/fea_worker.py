@@ -53,6 +53,7 @@ HEALTH_CHECK_PORT = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
 # Local Paths
 JOBS_DIR = Path(__file__).parent / "jobs"
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
+VISUALIZER_EXPORT_PATH = Path(__file__).parent / "lib" / "visualizer_export.py"
 
 # Initialize Flask app for health checks
 app = Flask(__name__)
@@ -165,6 +166,9 @@ def prepare_job_directory(job_id: str, input_parameters: Dict) -> Path:
     # Copy simulation_runner.py to job directory (required by Abaqus)
     shutil.copy(SIMULATION_RUNNER_PATH, job_dir / "simulation_runner.py")
     
+    # Copy visualizer_export.py to job directory (for post-processing)
+    shutil.copy(VISUALIZER_EXPORT_PATH, job_dir / "visualizer_export.py")
+    
     print(f"📁 Job directory prepared: {job_dir}")
     return job_dir
 
@@ -219,6 +223,63 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
     except Exception as e:
         print(f"❌ Unexpected error during simulation: {type(e).__name__}: {e}")
         return False
+
+
+def run_postprocessing(job_dir: Path, job_id: str) -> bool:
+    """
+    Execute post-processing visualization export via the Abaqus engine API.
+    
+    Args:
+        job_dir: Path to the job directory
+        job_id: Unique job identifier
+        
+    Returns:
+        True if post-processing succeeded, False otherwise.
+    """
+    print(f"🎨 Starting post-processing visualization export for job {job_id}...")
+    
+    payload = {
+        "job_id": job_id
+    }
+    
+    try:
+        # Use a shorter timeout for post-processing (should be faster than simulation)
+        response = requests.post(
+            f"{ABAQUS_ENGINE_URL}/postprocess",
+            json=payload,
+            timeout=300  # 5 minutes should be enough for visualization export
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Post-processing completed for job {job_id}")
+            return True
+        else:
+            # Safely parse JSON response
+            error_data = {}
+            if response.content:
+                try:
+                    error_data = response.json()
+                except ValueError:
+                    print(f"⚠️  Response is not JSON: {response.text[:200]}")
+                    error_data = {"raw_response": response.text[:200]}
+            
+            error_msg = error_data.get('stderr') or error_data.get('message') or error_data.get('details') or 'No error details'
+            print(f"⚠️  Post-processing API Error ({response.status_code}): {error_msg}")
+            return False
+            
+    except requests.exceptions.ConnectionError as e:
+        print(f"⚠️  Post-processing: Cannot connect to Abaqus engine at {ABAQUS_ENGINE_URL}")
+        return False
+    except requests.exceptions.Timeout:
+        print(f"⚠️  Post-processing: Export timed out after 300s")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Post-processing Network Error: {type(e).__name__}: {e}")
+        return False
+    except Exception as e:
+        print(f"⚠️  Post-processing Unexpected error: {type(e).__name__}: {e}")
+        return False
+
 
 def upload_job_artifacts_to_azure(job_id: str, local_dir: Path, inputs: Dict, is_failed: bool = False) -> str:
     """
@@ -309,13 +370,22 @@ def process_job(job: Dict) -> None:
         success = run_abaqus_simulation(job_dir, job_id)
         
         if success:
+            # Run post-processing visualization export
+            postprocess_success = run_postprocessing(job_dir, job_id)
+            if not postprocess_success:
+                print(f"⚠️  Post-processing failed, but continuing with artifact upload...")
+            
             print(f"✅ Simulation successful. Starting Azure Artifact Persistence...")
             azure_uri = upload_job_artifacts_to_azure(job_id, job_dir, input_parameters)
+            
+            status_message = f"Simulation success. Artifacts stored at: {azure_uri}"
+            if not postprocess_success:
+                status_message += " (Post-processing export failed)"
             
             update_job_status(
                 job_id,
                 "COMPLETED",
-                f"Simulation success. Artifacts stored at: {azure_uri}"
+                status_message
             )
             print(f"🎊 Job {job_id} fully archived and COMPLETED.")
         else:

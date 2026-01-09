@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   abaqus-engine:
-    image: abaqusregistry.azurecr.io/abaqus_2024_le:v3-final
+    image: abaqusregistry.azurecr.io/abaqus_2024_le:v4-postprocess
     container_name: abaqus_engine
     platform: linux/amd64
     shm_size: "2gb"
