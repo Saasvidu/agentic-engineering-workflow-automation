@@ -446,12 +446,12 @@ def main():
         import traceback
         traceback.print_exc()
     
-    # try:
-    #     export_preview_png(odb_path, 'preview.png')
-    # except Exception as e:
-    #     print(f"[ERROR] PNG export failed: {e}")
-    #     import traceback
-    #     traceback.print_exc()
+    try:
+        export_preview_png(odb_path, 'preview.png')
+    except Exception as e:
+        print(f"[ERROR] PNG export failed: {e}")
+        import traceback
+        traceback.print_exc()
     
     try:
         export_glb(odb_path, 'mesh.glb')
