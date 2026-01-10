@@ -167,7 +167,7 @@ docker run -d \
   --shm-size=1g \
   --memory="3.5g" \
   -e VNC_PW=password123 \
-  -v /mnt/abaqus_data:/home/kasm_user/work \
+  -v /media/abaqus-work-share:/home/kasm_user/work \
   abaqusregistry.azurecr.io/abaqus_2024_le:v1
 ```
 
