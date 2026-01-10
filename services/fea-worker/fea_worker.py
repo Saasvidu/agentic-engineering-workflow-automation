@@ -10,6 +10,7 @@ import sys
 import time
 import json
 import shutil
+import subprocess
 import threading
 from pathlib import Path
 from typing import Optional, Dict
@@ -53,7 +54,9 @@ HEALTH_CHECK_PORT = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
 # Local Paths
 JOBS_DIR = Path(__file__).parent / "jobs"
 SIMULATION_RUNNER_PATH = Path(__file__).parent / "lib" / "simulation_runner.py"
-VISUALIZER_EXPORT_PATH = Path(__file__).parent / "lib" / "visualizer_export.py"
+EXPORT_MESH_FIELDS_PATH = Path(__file__).parent / "lib" / "export_mesh_fields.py"
+EXPORT_PREVIEW_PNG_PATH = Path(__file__).parent / "lib" / "export_preview_png.py"
+VTU_TO_GLB_PATH = Path(__file__).parent / "tools" / "vtu_to_glb.py"
 
 # Initialize Flask app for health checks
 app = Flask(__name__)
@@ -166,8 +169,9 @@ def prepare_job_directory(job_id: str, input_parameters: Dict) -> Path:
     # Copy simulation_runner.py to job directory (required by Abaqus)
     shutil.copy(SIMULATION_RUNNER_PATH, job_dir / "simulation_runner.py")
     
-    # Copy visualizer_export.py to job directory (for post-processing)
-    shutil.copy(VISUALIZER_EXPORT_PATH, job_dir / "visualizer_export.py")
+    # Copy post-processing scripts to job directory
+    shutil.copy(EXPORT_MESH_FIELDS_PATH, job_dir / "export_mesh_fields.py")
+    shutil.copy(EXPORT_PREVIEW_PNG_PATH, job_dir / "export_preview_png.py")
     
     print(f"📁 Job directory prepared: {job_dir}")
     return job_dir
@@ -225,16 +229,66 @@ def run_abaqus_simulation(job_dir: Path, job_id: str) -> bool:
         return False
 
 
-def run_postprocessing(job_dir: Path, job_id: str) -> bool:
+def convert_vtu_to_glb(job_dir: Path, job_id: str) -> bool:
     """
-    Execute post-processing visualization export via the Abaqus engine API.
+    Convert VTU file to GLB format using vtu_to_glb.py script.
     
     Args:
         job_dir: Path to the job directory
         job_id: Unique job identifier
         
     Returns:
-        True if post-processing succeeded, False otherwise.
+        True if conversion succeeded, False otherwise.
+    """
+    vtu_path = job_dir / "mesh.vtu"
+    glb_path = job_dir / "mesh.glb"
+    
+    if not vtu_path.exists():
+        print(f"⚠️  VTU file not found at {vtu_path}, skipping GLB conversion")
+        return False
+    
+    print(f"🔄 Converting VTU to GLB for job {job_id}...")
+    
+    try:
+        # Use sys.executable to ensure we use the same Python interpreter
+        # (which has access to the virtual environment dependencies)
+        result = subprocess.run(
+            [sys.executable, str(VTU_TO_GLB_PATH), str(vtu_path), str(glb_path)],
+            capture_output=True,
+            text=True,
+            timeout=60  # GLB conversion should be quick
+        )
+        
+        if result.returncode == 0:
+            if glb_path.exists():
+                print(f"✅ GLB conversion completed for job {job_id}")
+                return True
+            else:
+                print(f"⚠️  GLB conversion returned success but file not found at {glb_path}")
+                return False
+        else:
+            print(f"⚠️  GLB conversion failed: {result.stderr[:500]}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print(f"⚠️  GLB conversion timed out after 60s")
+        return False
+    except Exception as e:
+        print(f"⚠️  GLB conversion error: {type(e).__name__}: {e}")
+        return False
+
+
+def run_postprocessing(job_dir: Path, job_id: str) -> bool:
+    """
+    Execute post-processing visualization export via the Abaqus engine API.
+    Handles the new two-phase postprocessing (VTU + PNG) and then converts to GLB locally.
+    
+    Args:
+        job_dir: Path to the job directory
+        job_id: Unique job identifier
+        
+    Returns:
+        True if post-processing succeeded (VTU export succeeded), False otherwise.
     """
     print(f"🎨 Starting post-processing visualization export for job {job_id}...")
     
@@ -250,21 +304,54 @@ def run_postprocessing(job_dir: Path, job_id: str) -> bool:
             timeout=300  # 5 minutes should be enough for visualization export
         )
         
+        # Parse response to handle new structured format
+        response_data = {}
+        if response.content:
+            try:
+                response_data = response.json()
+            except ValueError:
+                print(f"⚠️  Response is not JSON: {response.text[:200]}")
+                response_data = {"raw_response": response.text[:200]}
+        
+        # Check if VTU export succeeded (this is the critical step)
         if response.status_code == 200:
-            print(f"✅ Post-processing completed for job {job_id}")
-            return True
-        else:
-            # Safely parse JSON response
-            error_data = {}
-            if response.content:
-                try:
-                    error_data = response.json()
-                except ValueError:
-                    print(f"⚠️  Response is not JSON: {response.text[:200]}")
-                    error_data = {"raw_response": response.text[:200]}
+            status = response_data.get("status", "unknown")
+            artifacts = response_data.get("artifacts", {})
             
-            error_msg = error_data.get('stderr') or error_data.get('message') or error_data.get('details') or 'No error details'
+            if status in ["success", "success_with_warning"]:
+                vtu_exists = artifacts.get("mesh_vtu_exists", False)
+                png_exists = artifacts.get("preview_png_exists", False)
+                
+                if vtu_exists:
+                    print(f"✅ Post-processing completed for job {job_id} (VTU: ✓, PNG: {'✓' if png_exists else '✗'})")
+                    
+                    # Convert VTU to GLB locally (best effort, don't fail job if this fails)
+                    glb_success = convert_vtu_to_glb(job_dir, job_id)
+                    if not glb_success:
+                        print(f"⚠️  GLB conversion failed, but continuing with job completion...")
+                    
+                    return True
+                else:
+                    print(f"⚠️  Post-processing returned success but VTU file not found")
+                    return False
+            else:
+                error_msg = response_data.get('message') or 'Unknown error'
+                print(f"⚠️  Post-processing API returned error status: {error_msg}")
+                return False
+        else:
+            # Error response
+            error_msg = response_data.get('message') or response_data.get('stderr') or response_data.get('details') or 'No error details'
             print(f"⚠️  Post-processing API Error ({response.status_code}): {error_msg}")
+            
+            # Log step details if available
+            steps = response_data.get('steps', [])
+            if steps:
+                for step in steps:
+                    step_name = step.get('name', 'unknown')
+                    step_rc = step.get('returncode', -1)
+                    if step_rc != 0:
+                        print(f"   Step '{step_name}' failed (returncode: {step_rc})")
+            
             return False
             
     except requests.exceptions.ConnectionError as e:

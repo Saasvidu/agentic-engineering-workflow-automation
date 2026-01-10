@@ -16,54 +16,138 @@ import os
 
 app = Flask(__name__)
 
+DEFAULT_ENV = {
+    "WINEDEBUG": "-all",
+    "LANG": "en_US.1252",
+}
+
+def run_cmd(cmd: str, cwd: str):
+    """
+    Run a shell command in cwd, capture stdout/stderr, return a structured dict.
+    """
+    env = os.environ.copy()
+    env.update(DEFAULT_ENV)
+
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    return {
+        "cmd": cmd,
+        "returncode": result.returncode,
+        "stdout": (result.stdout or "")[-10000:],  # trim to keep responses reasonable
+        "stderr": (result.stderr or "")[-10000:],
+    }
+
 @app.route('/run', methods=['POST'])
 def run_simulation():
-    data = request.json
+    data = request.json or {}
     job_id = data.get('job_id')
-    # Use kasm-user (hyphen) as per the directory structure found
     work_dir = f"/home/kasm-user/work/{job_id}"
 
-    if not os.path.exists(work_dir):
-        return jsonify({"status": "error", "message": f"Path not found: {work_dir}"}), 404
+    if not job_id:
+        return jsonify({"status": "error", "message": "job_id missing"}), 400
 
-    # Abaqus Execution Command via Wine
+    if not os.path.exists(work_dir):
+        return jsonify({"status": "error", "message": f"Directory not found: {work_dir}"}), 404
+
     cmd = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI simulation_runner.py"
 
     try:
-        result = subprocess.run(cmd, shell=True, cwd=work_dir, capture_output=True, text=True)
-        if result.returncode == 0:
-            return jsonify({"status": "success", "output": result.stdout}), 200
-        else:
-            return jsonify({"status": "error", "stderr": result.stderr}), 500
+        res = run_cmd(cmd, work_dir)
+        if res["returncode"] == 0:
+            return jsonify({"status": "success", "output": res["stdout"]}), 200
+        return jsonify({"status": "error", "stderr": res["stderr"], "debug": res}), 500
     except Exception as e:
         return jsonify({"status": "exception", "details": str(e)}), 500
 
 @app.route('/postprocess', methods=['POST'])
 def run_postprocessing():
     """
-    Execute post-processing visualization export script.
+    Postprocess in two phases:
+      1) export_mesh_fields.py (VTU) via: abaqus python
+      2) export_preview_png.py (PNG) via: abaqus cae -noGUI -script
 
-    This endpoint runs after simulation completes to export visualization artifacts
-    (VTU mesh, PNG preview, GLB mesh) from the ODB file.
+    Returns per-step success + logs.
     """
-    data = request.json
+    data = request.json or {}
     job_id = data.get('job_id')
     work_dir = f"/home/kasm-user/work/{job_id}"
 
+    if not job_id:
+        return jsonify({"status": "error", "message": "job_id missing"}), 400
+
     if not os.path.exists(work_dir):
-        return jsonify({"status": "error", "message": f"Path not found: {work_dir}"}), 404
+        return jsonify({"status": "error", "message": f"Directory not found: {work_dir}"}), 404
 
-    # Abaqus Execution Command via Wine for post-processing
-    cmd = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI visualizer_export.py"
+    # Verify scripts exist
+    vtu_script = os.path.join(work_dir, "export_mesh_fields.py")
+    png_script = os.path.join(work_dir, "export_preview_png.py")
 
-    try:
-        result = subprocess.run(cmd, shell=True, cwd=work_dir, capture_output=True, text=True)
-        if result.returncode == 0:
-            return jsonify({"status": "success", "output": result.stdout}), 200
-        else:
-            return jsonify({"status": "error", "stderr": result.stderr}), 500
-    except Exception as e:
-        return jsonify({"status": "exception", "details": str(e)}), 500
+    missing = []
+    if not os.path.exists(vtu_script):
+        missing.append("export_mesh_fields.py")
+    if not os.path.exists(png_script):
+        missing.append("export_preview_png.py")
+
+    if missing:
+        return jsonify({
+            "status": "error",
+            "message": f"Missing scripts in job dir: {', '.join(missing)}",
+            "work_dir": work_dir
+        }), 500
+
+    steps = []
+
+    # Step 1: VTU export (headless, stable)
+    cmd_vtu = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus python export_mesh_fields.py"
+    res_vtu = run_cmd(cmd_vtu, work_dir)
+    steps.append({"name": "export_vtu", **res_vtu})
+
+    vtu_ok = (res_vtu["returncode"] == 0)
+
+    # Step 2: PNG export (best effort)
+    cmd_png = "WINEDEBUG=-all LANG=en_US.1252 wine64 abaqus cae -noGUI -script export_preview_png.py"
+    res_png = run_cmd(cmd_png, work_dir)
+    steps.append({"name": "export_png", **res_png})
+
+    png_ok = (res_png["returncode"] == 0)
+
+    # Build response
+    artifacts = {
+        "mesh_vtu_exists": os.path.exists(os.path.join(work_dir, "mesh.vtu")),
+        "preview_png_exists": os.path.exists(os.path.join(work_dir, "preview.png")),
+    }
+
+    # If VTU fails: hard fail (core artifact)
+    # If PNG fails but VTU succeeded: return 200 with warning
+    if not vtu_ok:
+        return jsonify({
+            "status": "error",
+            "message": "VTU export failed",
+            "artifacts": artifacts,
+            "steps": steps,
+        }), 500
+
+    if not png_ok:
+        return jsonify({
+            "status": "success_with_warning",
+            "message": "VTU export succeeded, PNG export failed",
+            "artifacts": artifacts,
+            "steps": steps,
+        }), 200
+
+    return jsonify({
+        "status": "success",
+        "message": "VTU + PNG export succeeded",
+        "artifacts": artifacts,
+        "steps": steps,
+    }), 200
 
 if __name__ == '__main__':
     # Listen on 0.0.0.0 to allow Docker port mapping
@@ -72,11 +156,17 @@ if __name__ == '__main__':
 
 ## 2.1 Post-Processing Endpoint
 
-The `/postprocess` endpoint executes visualization export after simulation completes. It runs the `visualizer_export.py` script inside the Abaqus Python environment to generate:
+The `/postprocess` endpoint executes visualization export in two phases after simulation completes:
 
-- **mesh.vtu**: VTK Unstructured Grid format with nodal coordinates, element connectivity, displacement vectors, and von Mises stress
-- **preview.png**: Abaqus viewport screenshot showing deformed shape with von Mises stress contour
-- **mesh.glb**: 3D mesh in GLB format (if trimesh library is available)
+1. **VTU Export**: Runs `export_mesh_fields.py` via `abaqus python` (headless, no CAE required)
+   - Generates **mesh.vtu**: VTK Unstructured Grid format with nodal coordinates, element connectivity, displacement vectors, and von Mises stress
+
+2. **PNG Export**: Runs `export_preview_png.py` via `abaqus cae -noGUI -script` (requires CAE viewport)
+   - Generates **preview.png**: Abaqus viewport screenshot showing deformed shape with von Mises stress contour
+
+The endpoint returns a structured response with per-step status, logs, and artifact verification. If VTU export fails, the endpoint returns an error. If PNG export fails but VTU succeeds, it returns a success with warning status.
+
+**Note**: GLB conversion (VTU to GLB) is performed separately in the FEA worker container after successful postprocessing, not in the Abaqus engine.
 
 The post-processing step is triggered by the FEA worker after the `/run` endpoint completes successfully.
 
@@ -130,4 +220,8 @@ The system now utilizes a **Parallel Startup Model**:
 
 2. **Post-Processing Stage** (after simulation succeeds):
    - **FEA Worker**: Sends a POST to `http://<worker-ip>:5000/postprocess` with a `job_id`.
-   - **Container**: Subprocess triggers Wine/Abaqus, executes `visualizer_export.py`, exports visualization artifacts (VTU, PNG, GLB), and returns the exit code and logs as a JSON response.
+   - **Container**: Executes two-phase postprocessing:
+     - Phase 1: Runs `export_mesh_fields.py` via `abaqus python` to generate mesh.vtu
+     - Phase 2: Runs `export_preview_png.py` via `abaqus cae -noGUI -script` to generate preview.png
+     - Returns structured JSON response with per-step status, logs, and artifact verification
+   - **FEA Worker**: After successful postprocessing, converts mesh.vtu to mesh.glb locally using `vtu_to_glb.py` script
