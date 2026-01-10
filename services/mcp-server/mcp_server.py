@@ -5,6 +5,7 @@ Provides REST API endpoints for job initialization, status updates, and queue ma
 """
 
 from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Optional, List
@@ -104,6 +105,15 @@ app = FastAPI(
     title="Model Context Protocol (MCP) Server v1",
     description="Central state management for Agentic FEA workflows.",
     version="1.0.0"
+)
+
+# Configure CORS to allow all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 
