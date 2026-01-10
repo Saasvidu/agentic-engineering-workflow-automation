@@ -10,6 +10,8 @@ from typing import Optional
 from datetime import datetime
 import uuid
 import sys
+import os
+import logging
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -17,6 +19,10 @@ from shared.mcp_schema import FEAJobContext, AbaqusInput, FEAJobStatus
 from database import get_db, init_db
 from models import FEAJob
 from conversions import pydantic_to_db, db_to_pydantic
+from azure_artifacts import build_artifact_urls, ArtifactUrlsResponse
+from azure.core.exceptions import AzureError
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # FastAPI Application
@@ -150,4 +156,68 @@ async def get_next_pending_job(db: Session = Depends(get_db)):
     
     return db_to_pydantic(db_job)
 
+
+@app.get("/mcp/{job_id}/artifacts", response_model=ArtifactUrlsResponse)
+async def get_job_artifacts(job_id: str, db: Session = Depends(get_db)):
+    """
+    Get time-limited, read-only SAS URLs for job artifacts stored in Azure Blob Storage.
+    
+    Args:
+        job_id: Unique job identifier
+        db: Database session
+        
+    Returns:
+        ArtifactUrlsResponse containing signed URLs for:
+        - summary.json
+        - data/preview.png
+        - data/mesh.glb
+        - data/mesh.vtu
+        
+    Raises:
+        HTTPException: 404 if job not found, 500 if Azure configuration or SDK errors occur
+    """
+    # Validate job exists
+    db_job = db.query(FEAJob).filter(FEAJob.job_id == job_id).first()
+    
+    if not db_job:
+        logger.warning(f"Artifact request for non-existent job: {job_id}")
+        raise HTTPException(status_code=404, detail=f"Job ID '{job_id}' not found.")
+    
+    # Get TTL from environment (default 3600 seconds)
+    ttl_seconds = int(os.getenv("ARTIFACT_SAS_TTL_SECONDS", "3600"))
+    
+    try:
+        # Generate signed URLs for artifacts
+        artifact_urls = build_artifact_urls(job_id, ttl_seconds=ttl_seconds)
+        
+        logger.info(f"Successfully generated artifact URLs for job {job_id}")
+        
+        return ArtifactUrlsResponse(
+            job_id=job_id,
+            expires_in_seconds=ttl_seconds,
+            base_path=f"{job_id}/",
+            artifacts=artifact_urls
+        )
+        
+    except ValueError as e:
+        # Missing Azure configuration
+        logger.error(f"Azure configuration error for job {job_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Azure Storage is not configured. Cannot generate artifact URLs. Error: {str(e)}"
+        )
+    except AzureError as e:
+        # Azure SDK errors
+        logger.error(f"Azure SDK error for job {job_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate artifact URLs due to Azure Storage error: {str(e)}"
+        )
+    except Exception as e:
+        # Unexpected errors
+        logger.error(f"Unexpected error generating artifact URLs for job {job_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error while generating artifact URLs: {str(e)}"
+        )
 
