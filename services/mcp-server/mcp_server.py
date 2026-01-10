@@ -4,10 +4,12 @@ MCP Server - Central state management API for Agentic FEA workflows.
 Provides REST API endpoints for job initialization, status updates, and queue management.
 """
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from sqlalchemy import or_, and_
+from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel
 import uuid
 import sys
 import os
@@ -23,6 +25,76 @@ from azure_artifacts import build_artifact_urls, ArtifactUrlsResponse
 from azure.core.exceptions import AzureError
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Response Models
+# ============================================================================
+
+class JobListItem(BaseModel):
+    """Minimal job information for listing."""
+    job_id: str
+    job_name: str
+    current_status: str
+    last_updated: datetime
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class JobListResponse(BaseModel):
+    """Paginated job list response."""
+    items: List[JobListItem]
+    limit: int
+    has_more: bool
+    next_cursor: Optional[str] = None
+
+
+# ============================================================================
+# Cursor Helper Functions
+# ============================================================================
+
+def encode_cursor(last_updated: datetime, job_id: str) -> str:
+    """
+    Encode a cursor from datetime and job_id.
+    
+    Args:
+        last_updated: Last updated timestamp
+        job_id: Job identifier
+        
+    Returns:
+        Opaque cursor string in format "{iso_datetime}|{job_id}"
+    """
+    return f"{last_updated.isoformat()}|{job_id}"
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, str]:
+    """
+    Decode a cursor string into datetime and job_id.
+    
+    Args:
+        cursor: Cursor string in format "{iso_datetime}|{job_id}"
+        
+    Returns:
+        Tuple of (datetime, job_id)
+        
+    Raises:
+        ValueError: If cursor format is invalid
+    """
+    parts = cursor.split("|", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid cursor format. Expected 'datetime|job_id', got: {cursor}")
+    
+    iso_datetime_str, job_id = parts
+    
+    try:
+        cursor_dt = datetime.fromisoformat(iso_datetime_str)
+    except ValueError as e:
+        raise ValueError(f"Invalid datetime in cursor: {iso_datetime_str}") from e
+    
+    return cursor_dt, job_id
+
 
 # ============================================================================
 # FastAPI Application
@@ -72,6 +144,104 @@ async def init_mcp(job_name: str, initial_input: AbaqusInput, db: Session = Depe
     db.refresh(db_job)
     
     return db_to_pydantic(db_job)
+
+@app.get("/mcp/jobs", response_model=JobListResponse)
+async def list_jobs(
+    limit: int = Query(20, ge=1, le=100, description="Number of jobs to return (1-100)"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor from previous response"),
+    status: Optional[FEAJobStatus] = Query(None, description="Filter by job status"),
+    db: Session = Depends(get_db)
+):
+    """
+    List FEA jobs with cursor-based pagination.
+    
+    Returns jobs ordered by last_updated DESC, job_id DESC.
+    Supports optional status filtering and cursor-based pagination.
+    
+    Args:
+        limit: Maximum number of jobs to return (1-100, default 20)
+        cursor: Opaque pagination cursor from previous response
+        status: Optional status filter (e.g., COMPLETED, FAILED, RUNNING)
+        db: Database session
+        
+    Returns:
+        JobListResponse with paginated job items
+        
+    Raises:
+        HTTPException: 400 if cursor format is invalid
+    """
+    # Decode cursor if provided
+    cursor_dt = None
+    cursor_job_id = None
+    if cursor:
+        try:
+            cursor_dt, cursor_job_id = decode_cursor(cursor)
+        except ValueError as e:
+            logger.warning(f"Invalid cursor format: {cursor} - {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid cursor format: {str(e)}"
+            )
+    
+    # Build query
+    query = db.query(FEAJob)
+    
+    # Apply status filter if provided
+    if status:
+        query = query.filter(FEAJob.current_status == status)
+    
+    # Apply cursor filter if provided
+    if cursor_dt is not None and cursor_job_id is not None:
+        # Return jobs where:
+        # - last_updated < cursor_dt
+        # OR
+        # - last_updated == cursor_dt AND job_id < cursor_job_id
+        query = query.filter(
+            or_(
+                FEAJob.last_updated < cursor_dt,
+                and_(
+                    FEAJob.last_updated == cursor_dt,
+                    FEAJob.job_id < cursor_job_id
+                )
+            )
+        )
+    
+    # Order by last_updated DESC, job_id DESC
+    query = query.order_by(FEAJob.last_updated.desc(), FEAJob.job_id.desc())
+    
+    # Fetch limit + 1 to determine if there are more pages
+    results = query.limit(limit + 1).all()
+    
+    # Determine if there are more pages
+    has_more = len(results) > limit
+    
+    # Slice to actual limit
+    items = results[:limit]
+    
+    # Build response items
+    job_items = [
+        JobListItem(
+            job_id=job.job_id,
+            job_name=job.job_name,
+            current_status=job.current_status,
+            last_updated=job.last_updated
+        )
+        for job in items
+    ]
+    
+    # Encode next cursor if there are more pages
+    next_cursor = None
+    if has_more and items:
+        last_job = items[-1]
+        next_cursor = encode_cursor(last_job.last_updated, last_job.job_id)
+    
+    return JobListResponse(
+        items=job_items,
+        limit=limit,
+        has_more=has_more,
+        next_cursor=next_cursor
+    )
+
 
 @app.get("/mcp/{job_id}", response_model=FEAJobContext)
 async def get_mcp_state(job_id: str, db: Session = Depends(get_db)):
@@ -220,4 +390,5 @@ async def get_job_artifacts(job_id: str, db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Unexpected error while generating artifact URLs: {str(e)}"
         )
+
 
