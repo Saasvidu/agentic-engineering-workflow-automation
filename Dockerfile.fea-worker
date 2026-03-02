@@ -2,6 +2,11 @@ FROM python:3.11-slim
 
 RUN rm -rf /var/lib/apt/lists/*
 
+# Create a user with UID 1000 (matching kasm_user in abaqus-engine)
+# This ensures files created by fea-worker are writable by abaqus-engine
+RUN groupadd -g 1000 worker && \
+    useradd -u 1000 -g 1000 -m worker
+
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -17,13 +22,17 @@ COPY services/fea-worker /app
 RUN uv sync
 
 # Create jobs directory for runtime job storage
-RUN mkdir -p /app/jobs
+RUN mkdir -p /app/jobs && \
+    chown -R worker:worker /app
 
 # Expose health check port (Azure Container Apps uses 8080 by default)
 EXPOSE 8080
 
 # Set Python to unbuffered mode for better logging in containers
 ENV PYTHONUNBUFFERED=1
+
+# Switch to worker user
+USER worker
 
 # Run the worker using the virtual environment
 # All configuration is done via environment variables

@@ -25,6 +25,7 @@ services:
       - ./services/fea-worker/.env
     volumes:
       - ./shared_data:/app/jobs
+    user: "1000:1000"  # Run as UID 1000 (matching kasm_user in abaqus-engine)
     tty: true
     stdin_open: true
     restart: on-failure
