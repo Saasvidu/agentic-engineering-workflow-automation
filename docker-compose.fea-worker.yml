@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   abaqus-engine:
+    # image: abaqusregistry.azurecr.io/abaqus_2024_le:v6-run-png-with-script
     image: ghcr.io/saasvidu/agentic-engineering-workflow-automation:abaqus-2024-v6
     container_name: abaqus_engine
     platform: linux/amd64
