@@ -2,11 +2,14 @@
 
 ## Prerequisites
 
-- Azure account with:
-  - Azure Container Registry (ACR) containing the Abaqus image (auto-downloads on pull)
-  - Azure Container Registry for ABQ registry
+- Docker image for Abaqus engine:
+  - Available at: `ghcr.io/saasvidu/agentic-engineering-workflow-automation:abaqus-2024-v6`
+  - The docker-compose file can be modified to use this image
 
-**Note:** The Abaqus image should already exist in your Azure Container Registry.
+- Azure Storage Account with a Blob Storage container:
+  - Required for storing FEA job artifacts and data
+  - Both MCP Server and FEA Worker services need access to this container
+  - Configure via `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_STORAGE_CONTAINER_NAME` environment variables
 
 - A PostgreSQL database
   - Any provider
